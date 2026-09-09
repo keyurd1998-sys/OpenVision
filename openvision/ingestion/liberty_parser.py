@@ -308,13 +308,18 @@ def parse_liberty_text(text: str, lib_name: str = "", filepath: Optional[Path] =
 
 
 def parse_liberty_file(file_path: Union[str, Path]) -> LibertyLibrary:
-    """Parses a Liberty (.lib) file from disk."""
+    """Parses a Liberty (.lib or .lib.gz) file from disk."""
     path = Path(file_path)
     if not path.is_file():
         raise FileNotFoundError(f"Liberty file not found: {path}")
 
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        text = f.read()
+    if path.suffix == ".gz":
+        import gzip
+        with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    else:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
 
     return parse_liberty_text(text, filepath=path)
 
