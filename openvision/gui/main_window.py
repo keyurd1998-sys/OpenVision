@@ -201,6 +201,31 @@ class SchematicWindow(QtWidgets.QMainWindow):
             f"Nets: {len(self._routing_res.net_routes):,} | "
             f"Columns: {self._placement_res.num_ranks}"
         )
+        QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
+
+    def display_design(
+        self,
+        module,
+        placement_res: PlacementResult,
+        routing_res: RoutingResult,
+    ) -> None:
+        """Displays pre-computed placement and routing results without re-computing."""
+        self._placement_res = placement_res
+        self._routing_res = routing_res
+        self.canvas.load_schematic(placement_res, routing_res)
+        self._populate_hierarchy_tree(module)
+        self.setWindowTitle(f"OpenVision - [{module.name}] ({len(module.instances):,} gates)")
+        self.status_left.setText(
+            f"Design: {module.name} | "
+            f"Gates: {len(module.instances):,} | "
+            f"Nets: {len(routing_res.net_routes):,} | "
+            f"Columns: {placement_res.num_ranks}"
+        )
+        QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
+
+    def showEvent(self, event: QtGui.QShowEvent):
+        super().showEvent(event)
+        QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
 
     # -------------------------------------------------------------------------
     # UI Setup Helpers

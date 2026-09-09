@@ -137,7 +137,7 @@ def main():
 
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
         win = SchematicWindow()
-        win.load_design(netlist_path, Path(lib_path) if args.liberty else None, hfn_threshold=args.hfn_threshold)
+        win.display_design(top_mod, placement_res, routing_res)
         win.show()
         sys.exit(app.exec())
 
