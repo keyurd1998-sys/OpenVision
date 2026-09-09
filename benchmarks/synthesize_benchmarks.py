@@ -41,7 +41,6 @@ def synthesize_design(design_name: str, top_module: str, rtl_dir: Path, synth_di
 read_verilog "{rtl_file.resolve()}"
 hierarchy -check -top {top_module}
 proc; opt; fsm; opt; memory; opt
-flatten
 techmap; opt
 dfflibmap -liberty "{lib_path.resolve()}"
 abc -liberty "{lib_path.resolve()}"

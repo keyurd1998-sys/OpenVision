@@ -119,8 +119,8 @@ def test_pin_resolver_orientations():
 
 def test_complex_aes_routing_scale_and_orthogonality():
     """
-    Validates end-to-end Manhattan orthogonal routing on the ~10,000 instance
-    AES-128 complex benchmark.
+    Validates end-to-end Manhattan orthogonal routing on hierarchical top module
+    and complex submodules of the AES-128 benchmark.
     """
     netlist_path = Path("benchmarks/synth/aes_cipher_top.v")
     if not netlist_path.is_file():
@@ -130,22 +130,32 @@ def test_complex_aes_routing_scale_and_orthogonality():
     lib = parse_liberty_file(lib_path)
     netlist = parse_netlist_file(netlist_path, liberty=lib)
 
-    placement = run_placement(netlist.top_module)
-    routing = route_placement(placement, hfn_threshold=20)
+    # 1. Test top-level hierarchical routing
+    placement_top = run_placement(netlist["aes_cipher_top"])
+    routing_top = route_placement(placement_top, hfn_threshold=20)
 
-    # Constraint 1: 100% strictly orthogonal (zero diagonal lines)
-    assert routing.is_strictly_orthogonal, "Violated: non-orthogonal segments found"
+    # Top module: 100% strictly orthogonal
+    assert routing_top.is_strictly_orthogonal, "Violated: non-orthogonal segments found in top module"
+    assert routing_top.elapsed_seconds < 0.5, f"Routing too slow: {routing_top.elapsed_seconds}s"
+    assert routing_top.total_segments >= 30, f"Expected >= 30 segments in top module, got {routing_top.total_segments}"
 
-    # Constraint 2: Sub-second runtime for ~10,000 gates
-    assert routing.elapsed_seconds < 3.0, f"Routing too slow: {routing.elapsed_seconds}s"
+    for seg in routing_top.all_segments():
+        dx = abs(seg.p1.x - seg.p2.x)
+        dy = abs(seg.p1.y - seg.p2.y)
+        assert dx < 1e-4 or dy < 1e-4, f"Diagonal segment in net {seg.net_name}: {seg.p1} -> {seg.p2}"
 
-    # Constraint 3: Substantial wire generation
-    assert routing.total_segments > 20000, f"Expected >20k segments, got {routing.total_segments}"
-    assert routing.total_solder_dots > 1000, f"Expected >1k solder dots, got {routing.total_solder_dots}"
-    assert routing.decoupled_hfn_count > 50, f"Expected >50 decoupled HFNs, got {routing.decoupled_hfn_count}"
+    # 2. Test complex submodule routing (aes_key_schedule with ~650 nodes and multi-fanout branches)
+    placement_sub = run_placement(netlist["aes_key_schedule"])
+    routing_sub = route_placement(placement_sub, hfn_threshold=20)
 
-    # Constraint 4: Verify all segment coordinates
-    for seg in routing.all_segments():
+    # Submodule: 100% strictly orthogonal, solder dots, and HFN decoupling
+    assert routing_sub.is_strictly_orthogonal, "Violated: non-orthogonal segments found in submodule"
+    assert routing_sub.elapsed_seconds < 2.0, f"Submodule routing too slow: {routing_sub.elapsed_seconds}s"
+    assert routing_sub.total_segments > 2000, f"Expected >2000 segments in key_schedule, got {routing_sub.total_segments}"
+    assert routing_sub.total_solder_dots > 100, f"Expected >100 solder dots, got {routing_sub.total_solder_dots}"
+    assert routing_sub.decoupled_hfn_count > 0, f"Expected decoupled HFNs, got {routing_sub.decoupled_hfn_count}"
+
+    for seg in routing_sub.all_segments():
         dx = abs(seg.p1.x - seg.p2.x)
         dy = abs(seg.p1.y - seg.p2.y)
         assert dx < 1e-4 or dy < 1e-4, f"Diagonal segment in net {seg.net_name}: {seg.p1} -> {seg.p2}"

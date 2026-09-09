@@ -421,32 +421,9 @@ module aes_cipher_top (
     input  wire         ld,
     input  wire [127:0] key,
     input  wire [127:0] text_in,
-    output reg  [127:0] text_out,
-    output reg          done
+    output wire [127:0] text_out,
+    output wire         done
 );
-    // Registered Primary Inputs and Outputs
-    reg  [127:0] key_reg;
-    reg  [127:0] text_in_reg;
-    reg          ld_reg;
-    wire [127:0] cipher_text_out;
-    wire         ctrl_done;
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            key_reg     <= 128'b0;
-            text_in_reg <= 128'b0;
-            ld_reg      <= 1'b0;
-            text_out    <= 128'b0;
-            done        <= 1'b0;
-        end else begin
-            key_reg     <= key;
-            text_in_reg <= text_in;
-            ld_reg      <= ld;
-            text_out    <= cipher_text_out;
-            done        <= ctrl_done;
-        end
-    end
-
     wire [3:0]   round_idx;
     wire         ld_key;
     wire         next_key;
@@ -455,41 +432,41 @@ module aes_cipher_top (
     wire         sel_final;
     wire [127:0] current_key;
 
-    // Controller
+    // Controller Subsystem
     aes_controller u_controller (
         .clk(clk),
         .rst(rst),
-        .start(ld_reg),
+        .start(ld),
         .round_idx(round_idx),
         .ld_key(ld_key),
         .next_key(next_key),
         .ld_state(ld_state),
         .sel_initial(sel_initial),
         .sel_final(sel_final),
-        .done(ctrl_done)
+        .done(done)
     );
 
-    // Key Schedule
+    // Key Schedule Subsystem
     aes_key_schedule u_key_schedule (
         .clk(clk),
         .rst(rst),
         .ld_key(ld_key),
         .next_key(next_key),
         .round_idx(round_idx),
-        .key_in(key_reg),
+        .key_in(key),
         .current_key(current_key)
     );
 
-    // Datapath
+    // Datapath Subsystem
     aes_datapath u_datapath (
         .clk(clk),
         .rst(rst),
         .ld_state(ld_state),
         .sel_initial(sel_initial),
         .sel_final(sel_final),
-        .text_in(text_in_reg),
+        .text_in(text_in),
         .round_key(current_key),
-        .cipher_text(cipher_text_out)
+        .cipher_text(text_out)
     );
 
 endmodule

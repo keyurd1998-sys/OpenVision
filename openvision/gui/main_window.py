@@ -136,6 +136,10 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self._current_cone = None
         self._selected_node_name: Optional[str] = None
         self._is_hierarchy_expanded: bool = False
+        self._netlist = None
+        self._current_module = None
+        self._hierarchy_history: List[Tuple[str, Any, Any, Any]] = []
+        self._placement_cache: Dict[str, Tuple[PlacementResult, RoutingResult]] = {}
 
         # 1. Central Canvas Widget
         self.canvas = SchematicCanvas(self)
@@ -146,6 +150,7 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self.canvas.net_selected.connect(self._on_net_selected)
         self.canvas.gate_selected.connect(self._on_gate_selected)
         self.canvas.module_expanded.connect(self.expand_hierarchy)
+        self.canvas.submodule_activated.connect(self.descend_into_submodule)
 
         # 2. UI Components
         self._create_actions()
@@ -153,6 +158,16 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self._create_toolbar()
         self._create_hierarchy_dock()
         self._create_status_bar()
+
+    @property
+    def current_module(self):
+        """Returns the currently active NetlistModule in the schematic window."""
+        return self._current_module
+
+    @property
+    def is_hierarchy_expanded(self) -> bool:
+        """Returns True if the schematic hierarchy is currently expanded."""
+        return self._is_hierarchy_expanded
 
     def load_design(
         self,
@@ -192,16 +207,19 @@ class SchematicWindow(QtWidgets.QMainWindow):
         QtWidgets.QApplication.processEvents()
         self._routing_res = route_placement(self._placement_res, hfn_threshold=hfn_threshold)
 
-        # Save full references for cone restoration
+        # Save full references for cone restoration and hierarchy navigation
         self._full_module = top_mod
         self._full_placement_res = self._placement_res
         self._full_routing_res = self._routing_res
+        self._netlist = netlist
+        self._current_module = top_mod
+        self._hierarchy_history.clear()
+        self._placement_cache[top_mod.name] = (self._placement_res, self._routing_res)
 
         # Populate Hierarchy Browser
         self._populate_hierarchy_tree(top_mod)
 
         # Update Window Title and Status
-        self.setWindowTitle(f"OpenVision - [{top_mod.name}] ({len(top_mod.instances):,} gates) - {self._netlist_file.name}")
         self.show_module_box()
 
     def display_design(
@@ -210,6 +228,7 @@ class SchematicWindow(QtWidgets.QMainWindow):
         placement_res: PlacementResult,
         routing_res: RoutingResult,
         start_expanded: bool = False,
+        netlist=None,
     ) -> None:
         """Displays pre-computed placement and routing results. Opens in module box by default."""
         self._placement_res = placement_res
@@ -217,9 +236,11 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self._full_module = module
         self._full_placement_res = placement_res
         self._full_routing_res = routing_res
+        self._current_module = module
+        self._netlist = netlist if netlist is not None else getattr(module, "_netlist", None)
+        self._placement_cache[module.name] = (placement_res, routing_res)
 
         self._populate_hierarchy_tree(module)
-        self.setWindowTitle(f"OpenVision - [{module.name}] ({len(module.instances):,} gates)")
 
         if start_expanded:
             self.expand_hierarchy()
@@ -232,42 +253,126 @@ class SchematicWindow(QtWidgets.QMainWindow):
             return
 
         self._is_hierarchy_expanded = False
+        self._current_module = self._full_module
+        self._hierarchy_history.clear()
         self.canvas.load_module_box(self._full_module, on_expand=self.expand_hierarchy)
 
         if hasattr(self, "btn_box_view"):
             self.btn_box_view.setVisible(False)
+        if hasattr(self, "btn_up_hierarchy"):
+            self.btn_up_hierarchy.setVisible(False)
         if hasattr(self, "btn_expand_hierarchy"):
             self.btn_expand_hierarchy.setVisible(True)
 
-        self.status_left.setText(
-            f"Design: {self._full_module.name} | "
-            f"Gates: {len(self._full_module.instances):,} | "
-            f"Ports: {len(self._full_module.ports)} | "
-            f"Top-Level Block View"
-        )
-        self.status_mid.setText("Double-click the module box to expand hierarchy")
+        self._update_hierarchy_display()
         QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
 
     def expand_hierarchy(self, module=None) -> None:
-        """Expands the module box into the full gate-level placed and routed schematic."""
-        if not self._full_placement_res or not self._full_routing_res or not self._full_module:
+        """Expands the top-level module box into the internal schematic layout."""
+        if not self._full_module or not self._full_placement_res or not self._full_routing_res:
             return
 
         self._is_hierarchy_expanded = True
+        self._current_module = self._full_module
+        self._placement_res = self._full_placement_res
+        self._routing_res = self._full_routing_res
         self.canvas.load_schematic(self._full_placement_res, self._full_routing_res)
+
+        if hasattr(self, "btn_box_view"):
+            self.btn_box_view.setEnabled(True)
+            self.btn_expand_hierarchy.setEnabled(False)
+            self.btn_up_hierarchy.setEnabled(len(self._hierarchy_history) > 0)
+
+        self._update_hierarchy_display()
+        self._populate_hierarchy_tree(self._full_module)
+        QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
+
+    def descend_into_submodule(self, inst_name: str, module_type: str) -> None:
+        """Descends into a submodule's internal schematic."""
+        netlist = self._netlist or getattr(self._full_module, "_netlist", None)
+        if not netlist or module_type not in netlist.modules:
+            return
+        self._netlist = netlist
+
+        target_mod = netlist[module_type]
+        # Push current view state to history stack
+        self._hierarchy_history.append((self._current_module.name, self._current_module, self._placement_res, self._routing_res))
+
+        # Check placement cache for instant loading
+        if module_type in self._placement_cache:
+            p_res, r_res = self._placement_cache[module_type]
+        else:
+            self.status_left.setText(f"Placing submodule {module_type}...")
+            QtWidgets.QApplication.processEvents()
+            p_res = run_placement(target_mod)
+            r_res = route_placement(p_res)
+            self._placement_cache[module_type] = (p_res, r_res)
+
+        self._current_module = target_mod
+        self._placement_res = p_res
+        self._routing_res = r_res
+        self._is_hierarchy_expanded = True
+
+        self.canvas.load_schematic(p_res, r_res)
 
         if hasattr(self, "btn_box_view"):
             self.btn_box_view.setVisible(True)
         if hasattr(self, "btn_expand_hierarchy"):
             self.btn_expand_hierarchy.setVisible(False)
+        if hasattr(self, "btn_up_hierarchy"):
+            self.btn_up_hierarchy.setVisible(True)
+            self.btn_up_hierarchy.setEnabled(True)
 
-        self.status_left.setText(
-            f"Design: {self._full_module.name} | "
-            f"Gates: {len(self._full_module.instances):,} | "
-            f"Nets: {len(self._full_routing_res.net_routes):,} | "
-            f"Columns: {self._full_placement_res.num_ranks}"
-        )
-        self.status_mid.setText("Expanded internal gate-level schematic (press Esc or click 'Module Box' to collapse)")
+        self._update_hierarchy_display()
+        self._populate_hierarchy_tree(target_mod)
+        QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
+
+    def ascend_hierarchy(self) -> None:
+        """Navigates up one level in the module hierarchy or back to the box view."""
+        if self._hierarchy_history:
+            parent_name, parent_mod, p_res, r_res = self._hierarchy_history.pop()
+            self._current_module = parent_mod
+            self._placement_res = p_res
+            self._routing_res = r_res
+            self.canvas.load_schematic(p_res, r_res)
+            if hasattr(self, "btn_up_hierarchy"):
+                self.btn_up_hierarchy.setVisible(True)
+                self.btn_up_hierarchy.setEnabled(len(self._hierarchy_history) > 0)
+            self._update_hierarchy_display()
+            self._populate_hierarchy_tree(parent_mod)
+            QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
+        else:
+            self.show_module_box()
+
+    def _update_hierarchy_display(self) -> None:
+        """Updates window title, breadcrumb bar, and status indicators."""
+        if not self._full_module or not self._current_module:
+            return
+
+        if not self._is_hierarchy_expanded:
+            if hasattr(self, "lbl_breadcrumb"):
+                self.lbl_breadcrumb.setText(f" Hierarchy: [{self._full_module.name}] (Module Box) ")
+            self.setWindowTitle(f"OpenVision - [{self._full_module.name}] - Module Box View")
+            self.status_left.setText(
+                f"Design: {self._full_module.name} | "
+                f"Gates: {len(self._full_module.instances):,} | "
+                f"Ports: {len(self._full_module.ports)} | "
+                f"Top-Level Block View"
+            )
+            self.status_mid.setText("Double-click the module box to expand hierarchy")
+        else:
+            path_names = [item[0] for item in self._hierarchy_history] + [self._current_module.name]
+            path_str = " > ".join(path_names)
+            if hasattr(self, "lbl_breadcrumb"):
+                self.lbl_breadcrumb.setText(f" Hierarchy: {path_str} ")
+            self.setWindowTitle(f"OpenVision - [{path_str}] ({len(self._current_module.instances):,} gates)")
+            self.status_left.setText(
+                f"Module: {self._current_module.name} | "
+                f"Gates: {len(self._current_module.instances):,} | "
+                f"Nets: {len(self._routing_res.net_routes) if self._routing_res else 0:,} | "
+                f"Columns: {self._placement_res.num_ranks if self._placement_res else 0}"
+            )
+            self.status_mid.setText(f"Active schematic: {self._current_module.name} (Double-click submodule blocks to drill down, press Esc to go Up)")
         QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
 
     def showEvent(self, event: QtGui.QShowEvent):
@@ -412,9 +517,16 @@ class SchematicWindow(QtWidgets.QMainWindow):
         tb.addSeparator()
         self.btn_expand_hierarchy = QtWidgets.QPushButton("Expand Hierarchy")
         self.btn_expand_hierarchy.setStyleSheet("background-color: #0284c7; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;")
-        self.btn_expand_hierarchy.setToolTip("Expand the module box into internal gate-level schematic (or double-click the box)")
+        self.btn_expand_hierarchy.setToolTip("Expand the module box into internal schematic (or double-click the box)")
         self.btn_expand_hierarchy.clicked.connect(self.expand_hierarchy)
         tb.addWidget(self.btn_expand_hierarchy)
+
+        self.btn_up_hierarchy = QtWidgets.QPushButton("Up Hierarchy")
+        self.btn_up_hierarchy.setStyleSheet("background-color: #0d9488; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;")
+        self.btn_up_hierarchy.setToolTip("Navigate up one level in module hierarchy (Esc)")
+        self.btn_up_hierarchy.clicked.connect(self.ascend_hierarchy)
+        self.btn_up_hierarchy.setVisible(False)
+        tb.addWidget(self.btn_up_hierarchy)
 
         self.btn_box_view = QtWidgets.QPushButton("Module Box")
         self.btn_box_view.setStyleSheet("background-color: #334155; color: white; padding: 3px 8px; border-radius: 3px;")
@@ -422,6 +534,11 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self.btn_box_view.clicked.connect(self.show_module_box)
         self.btn_box_view.setVisible(False)
         tb.addWidget(self.btn_box_view)
+
+        tb.addSeparator()
+        self.lbl_breadcrumb = QtWidgets.QLabel(" Hierarchy: [Module Box] ")
+        self.lbl_breadcrumb.setStyleSheet("color: #38bdf8; font-weight: bold; font-family: monospace;")
+        tb.addWidget(self.lbl_breadcrumb)
 
         tb.addSeparator()
         tb.addAction(self.act_export_png)
@@ -468,8 +585,20 @@ class SchematicWindow(QtWidgets.QMainWindow):
         sb.addPermanentWidget(self.status_coords)
 
     def _populate_hierarchy_tree(self, module):
-        """Populates the hierarchy tree with ports, sequential, and combinational gates."""
+        """Populates the hierarchy tree with submodules, ports, sequential, and combinational gates."""
         self.tree_widget.clear()
+
+        # Hierarchical Submodules
+        submods = [
+            inst for inst in module.instances.values()
+            if hasattr(self, "_netlist") and self._netlist and inst.cell_type in self._netlist.modules
+        ]
+        if submods:
+            item_submods = QtWidgets.QTreeWidgetItem(self.tree_widget, ["Submodules (Double-Click)", f"{len(submods)} blocks"])
+            for inst in submods:
+                sub_item = QtWidgets.QTreeWidgetItem(item_submods, [inst.name, f"Module: {inst.cell_type}"])
+                sub_item.setData(0, Qt.ItemDataRole.UserRole, inst.cell_type)
+            item_submods.setExpanded(True)
 
         # Primary Ports
         item_ports = QtWidgets.QTreeWidgetItem(self.tree_widget, ["Primary Ports", f"{len(module.ports)} ports"])
@@ -485,7 +614,10 @@ class SchematicWindow(QtWidgets.QMainWindow):
             QtWidgets.QTreeWidgetItem(item_dff, [f"... ({len(dffs) - 500} more registers)", ""])
 
         # Combinational Gates
-        comb = [inst for inst in module.instances.values() if "DFF" not in getattr(inst, "gate_type", "").name]
+        comb = [
+            inst for inst in module.instances.values()
+            if "DFF" not in getattr(inst, "gate_type", "").name and inst not in submods
+        ]
         item_comb = QtWidgets.QTreeWidgetItem(self.tree_widget, ["Combinational Logic", f"{len(comb)} gates"])
         for inst in comb[:500]:
             gt = getattr(inst, "gate_type", None)
@@ -587,13 +719,17 @@ class SchematicWindow(QtWidgets.QMainWindow):
 
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Escape:
-            if getattr(self, "_is_hierarchy_expanded", False):
-                self.show_module_box()
-                event.accept()
-                return
+            self.ascend_hierarchy()
+            event.accept()
+            return
         super().keyPressEvent(event)
 
     def _on_tree_item_double_clicked(self, item: QtWidgets.QTreeWidgetItem, column: int) -> None:
+        submod_type = item.data(0, Qt.ItemDataRole.UserRole)
+        if submod_type and self._netlist and submod_type in self._netlist.modules:
+            self.descend_into_submodule(item.text(0), submod_type)
+            return
+
         if item == self.tree_widget.topLevelItem(0):
             if self._is_hierarchy_expanded:
                 self.show_module_box()

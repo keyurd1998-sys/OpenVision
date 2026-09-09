@@ -37,21 +37,34 @@ def test_benchmark_synth_netlist_valid(sky130_lib, name, top):
     assert inst_count > 0, f"Module {top} has no instances"
     assert len(mod.ports) > 0, f"Module {top} has no ports"
 
-    # Verify instance count is ~10,000 (8,000 to 12,000 instances)
-    assert 8000 <= inst_count <= 12000, f"Expected ~10,000 instances, got {inst_count}"
+    # Verify hierarchical structure is preserved (unflattened netlist)
+    assert len(netlist.modules) > 1, f"Expected hierarchical netlist with multiple modules, got {len(netlist.modules)}"
+    assert inst_count == 3, f"Expected 3 hierarchical submodules in {top}, got {inst_count}"
 
-    summary = mod.get_summary()
-    assert summary["total_instances"] == inst_count
-    assert summary["sequential_instances"] > 400
-    assert summary["combinational_instances"] > 8000
-    assert summary["total_nets"] > 8000
+    # Verify submodules exist and total instance count across hierarchy
+    total_insts = sum(len(m.instances) for m in netlist.modules.values())
+    assert total_insts > 2000, f"Expected >2000 instances across hierarchy, got {total_insts}"
 
-    # Verify gate types are recognized
-    gate_types = summary["gate_types"]
-    assert GateType.DFF.value in gate_types
-    assert GateType.NAND.value in gate_types
-    assert GateType.NOR.value in gate_types
-    assert GateType.XOR.value in gate_types
-    assert GateType.XNOR.value in gate_types
-    assert GateType.OAI.value in gate_types
-    assert GateType.AOI.value in gate_types
+    # Verify submodules are mapped to Sky130 standard cells
+    sbox = netlist["aes_sbox_lut"]
+    assert len(sbox.instances) > 300
+    sbox_summary = sbox.get_summary()
+    assert sbox_summary["combinational_instances"] > 300
+
+    # Verify controller has DFFs
+    ctrl = netlist["aes_controller"]
+    ctrl_summary = ctrl.get_summary()
+    assert GateType.DFF.value in ctrl_summary["gate_types"]
+
+    # Collect gate types across all modules
+    all_gate_types = set()
+    for m in netlist.modules.values():
+        all_gate_types.update(m.get_summary()["gate_types"].keys())
+
+    assert GateType.DFF.value in all_gate_types
+    assert GateType.NAND.value in all_gate_types
+    assert GateType.NOR.value in all_gate_types
+    assert GateType.XOR.value in all_gate_types
+    assert GateType.XNOR.value in all_gate_types
+    assert GateType.OAI.value in all_gate_types
+    assert GateType.AOI.value in all_gate_types

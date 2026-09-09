@@ -79,44 +79,61 @@ def build_placement_graph(module: NetlistModule, decouple_dff: bool = True) -> P
     # 1. Create primary input nodes
     for port in module.ports.values():
         if port.direction in ("input", "inout"):
-            for bit in port.bit_names:
-                node_id = f"port_in:{bit}"
-                graph.add_node(
-                    PlacementNode(
-                        id=node_id,
-                        kind="PRIMARY_INPUT",
-                        name=bit,
-                        ref=port,
-                        width=50.0,
-                        height=24.0,
-                    )
+            node_id = f"port_in:{port.name}"
+            label = f"{port.name} [{port.msb}:{port.lsb}]" if port.is_bus else port.name
+            w = 80.0 if not port.is_bus else 110.0
+            graph.add_node(
+                PlacementNode(
+                    id=node_id,
+                    kind="PRIMARY_INPUT",
+                    name=label,
+                    ref=port,
+                    width=w,
+                    height=26.0,
                 )
+            )
         if port.direction in ("output", "inout"):
-            for bit in port.bit_names:
-                node_id = f"port_out:{bit}"
-                graph.add_node(
-                    PlacementNode(
-                        id=node_id,
-                        kind="PRIMARY_OUTPUT",
-                        name=bit,
-                        ref=port,
-                        width=50.0,
-                        height=24.0,
-                    )
+            node_id = f"port_out:{port.name}"
+            label = f"{port.name} [{port.msb}:{port.lsb}]" if port.is_bus else port.name
+            w = 80.0 if not port.is_bus else 110.0
+            graph.add_node(
+                PlacementNode(
+                    id=node_id,
+                    kind="PRIMARY_OUTPUT",
+                    name=label,
+                    ref=port,
+                    width=w,
+                    height=26.0,
                 )
+            )
 
     # 2. Create instance nodes
     for inst in module.instances.values():
+        is_hier = (inst.classification and "Hierarchical Module" in inst.classification.description)
         is_dff = (inst.gate_type in (GateType.DFF, GateType.LATCH)) or any(k in inst.cell_type.lower() for k in ("dfx", "dff", "latch", "flop"))
         node_id = f"inst:{inst.name}"
+        if is_hier:
+            num_pins = max(len(inst.connections), 4)
+            w = 160.0
+            h = max(100.0, num_pins * 20.0)
+            kind = "MODULE"
+        elif is_dff:
+            w = 100.0
+            h = 70.0
+            kind = "DFF"
+        else:
+            w = 80.0
+            h = 50.0
+            kind = "INSTANCE"
+
         graph.add_node(
             PlacementNode(
                 id=node_id,
-                kind="DFF" if is_dff else "INSTANCE",
+                kind=kind,
                 name=inst.name,
                 ref=inst,
-                width=100.0 if is_dff else 80.0,
-                height=70.0 if is_dff else 50.0,
+                width=w,
+                height=h,
             )
         )
 
@@ -176,27 +193,31 @@ def build_placement_graph(module: NetlistModule, decouple_dff: bool = True) -> P
     # 4. Connect Primary Outputs
     for port in module.ports.values():
         if port.direction in ("output", "inout"):
-            for bit in port.bit_names:
-                dst_node_id = f"port_out:{bit}"
-                drivers = module.get_drivers(bit)
-                for drv_src, drv_pin in drivers:
-                    if drv_src == "PORT":
-                        src_node_id = f"port_in:{drv_pin}"
-                    elif drv_src == "ASSIGN":
-                        continue
-                    else:
-                        src_node_id = f"inst:{drv_src}"
+            dst_node_id = f"port_out:{port.name}"
+            drivers = module.get_drivers(port.name)
+            if not drivers and port.is_bus:
+                for bit in port.bit_names:
+                    for d in module.get_drivers(bit):
+                        if d not in drivers:
+                            drivers.append(d)
+            for drv_src, drv_pin in drivers:
+                if drv_src == "PORT":
+                    src_node_id = f"port_in:{drv_pin}"
+                elif drv_src == "ASSIGN":
+                    continue
+                else:
+                    src_node_id = f"inst:{drv_src}"
 
-                    if src_node_id in graph.nodes:
-                        edge = PlacementEdge(
-                            src=src_node_id,
-                            dst=dst_node_id,
-                            net_name=bit,
-                            src_pin=drv_pin,
-                            dst_pin="IN",
-                            is_feedback=False,
-                        )
-                        graph.add_edge(edge)
+                if src_node_id in graph.nodes and dst_node_id in graph.nodes:
+                    edge = PlacementEdge(
+                        src=src_node_id,
+                        dst=dst_node_id,
+                        net_name=port.name,
+                        src_pin=drv_pin,
+                        dst_pin="IN",
+                        is_feedback=False,
+                    )
+                    graph.add_edge(edge)
 
     # 5. DFS cycle detection for any remaining combinational feedback loops
     _break_remaining_cycles(graph)

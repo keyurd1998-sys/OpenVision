@@ -180,3 +180,56 @@ def test_module_box_rendering_and_expansion(qapp, small_design):
     assert not win._is_hierarchy_expanded
     assert win.canvas.is_box_view
     assert win.canvas._module_box_item is not None
+
+
+def test_hierarchical_submodule_navigation(qapp):
+    """Verifies hierarchical drill-down into submodules and ascending back to top-level."""
+    lib_path = find_default_liberty()
+    lib = parse_liberty_file(lib_path)
+    synth_path = Path("benchmarks/synth/aes_cipher_top.v")
+    assert synth_path.is_file()
+
+    netlist = parse_netlist_file(synth_path, liberty=lib)
+    top_mod = netlist["aes_cipher_top"]
+
+    placement = run_placement(top_mod)
+    routing = route_placement(placement)
+
+    win = SchematicWindow()
+    win.display_design(top_mod, placement, routing, start_expanded=False)
+
+    # 1. Initial state: Module Box view
+    assert win.canvas.is_box_view
+    assert not win._is_hierarchy_expanded
+    assert not win.btn_up_hierarchy.isEnabled()
+
+    # 2. Expand hierarchy into top-level structural block diagram
+    win.expand_hierarchy()
+    assert not win.canvas.is_box_view
+    assert win._is_hierarchy_expanded
+    assert win.current_module.name == "aes_cipher_top"
+    assert "inst:u_controller" in win.canvas._gate_items
+    assert "inst:u_datapath" in win.canvas._gate_items
+    assert "inst:u_key_schedule" in win.canvas._gate_items
+
+    # 3. Double-click / descend into u_controller (aes_controller)
+    win.descend_into_submodule("u_controller", "aes_controller")
+    assert win.current_module.name == "aes_controller"
+    assert len(win._hierarchy_history) == 1
+    assert win.btn_up_hierarchy.isEnabled()
+    assert "aes_cipher_top > aes_controller" in win.lbl_breadcrumb.text()
+    # Check that gates in aes_controller are loaded in canvas
+    assert len(win.canvas._gate_items) == len(netlist["aes_controller"].instances) + len(netlist["aes_controller"].ports)
+
+    # 4. Ascend back up to aes_cipher_top (via Esc / Up Hierarchy)
+    win.ascend_hierarchy()
+    assert win.current_module.name == "aes_cipher_top"
+    assert len(win._hierarchy_history) == 0
+    assert not win.btn_up_hierarchy.isEnabled()
+    assert "aes_cipher_top" in win.lbl_breadcrumb.text()
+    assert "inst:u_controller" in win.canvas._gate_items
+
+    # 5. Ascend from top level collapses back to Module Box view
+    win.ascend_hierarchy()
+    assert win.canvas.is_box_view
+    assert not win._is_hierarchy_expanded

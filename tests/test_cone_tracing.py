@@ -132,7 +132,7 @@ def test_trace_shortest_path(sequential_netlist):
 
 
 def test_cone_tracing_on_aes_benchmark():
-    """Verifies cone tracing on the full 10,000-cell AES benchmark."""
+    """Verifies cone tracing on top-level hierarchy and standard-cell submodules of AES benchmark."""
     netlist_path = Path("benchmarks/synth/aes_cipher_top.v")
     assert netlist_path.is_file()
 
@@ -142,28 +142,45 @@ def test_cone_tracing_on_aes_benchmark():
     top_mod = netlist.top_module
     assert top_mod is not None
 
+    # 1. Test cone tracing on hierarchical top module (target u_datapath)
     tracer = ConeTracer(top_mod)
-
-    # Test fanin of gate _10000_
-    target = "_10000_"
+    target = "u_datapath"
     assert target in top_mod.instances
 
     cone_fanin_1 = tracer.trace_fanin(target, depth=1)
     assert cone_fanin_1.total_gates >= 1
     assert cone_fanin_1.max_depth_reached <= 1
 
-    cone_fanin_3 = tracer.trace_fanin(target, depth=3)
-    assert cone_fanin_3.total_gates >= cone_fanin_1.total_gates
+    cone_fanin_2 = tracer.trace_fanin(target, depth=2)
+    assert cone_fanin_2.total_gates >= cone_fanin_1.total_gates
 
-    # Test fanout
-    cone_fanout = tracer.trace_fanout(target, depth=2)
+    cone_fanout = tracer.trace_fanout("u_controller", depth=2)
     assert cone_fanout.total_gates >= 1
 
-    # Test submodule extraction & placement/routing of the isolated cone
-    submod = cone_fanin_3.extract_submodule(top_mod)
-    assert len(submod.instances) == cone_fanin_3.total_gates
+    # Test submodule extraction & placement/routing of isolated cone
+    submod = cone_fanin_2.extract_submodule(top_mod)
+    assert len(submod.instances) == cone_fanin_2.total_gates
 
     sub_placement = run_placement(submod)
     assert sub_placement.num_ranks >= 1
     sub_routing = route_placement(sub_placement)
     assert sub_routing.total_segments > 0
+    assert sub_routing.is_strictly_orthogonal
+
+    # 2. Test cone tracing on standard-cell submodule (aes_sbox_lut)
+    sbox_mod = netlist["aes_sbox_lut"]
+    sbox_tracer = ConeTracer(sbox_mod)
+    sbox_target = list(sbox_mod.instances.keys())[-1]
+
+    cone_sbox_1 = sbox_tracer.trace_fanin(sbox_target, depth=1)
+    assert cone_sbox_1.total_gates >= 1
+
+    cone_sbox_3 = sbox_tracer.trace_fanin(sbox_target, depth=3)
+    assert cone_sbox_3.total_gates >= cone_sbox_1.total_gates
+
+    sbox_submod = cone_sbox_3.extract_submodule(sbox_mod)
+    assert len(sbox_submod.instances) == cone_sbox_3.total_gates
+    sbox_place = run_placement(sbox_submod)
+    assert sbox_place.num_ranks >= 1
+    sbox_route = route_placement(sbox_place)
+    assert sbox_route.is_strictly_orthogonal

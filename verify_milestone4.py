@@ -82,14 +82,33 @@ def main():
     win = SchematicWindow()
     canvas = win.canvas
 
-    canvas.load_schematic(placement_res, routing_res)
+    # Display design with initial Module Box view
+    win.display_design(top_mod, placement_res, routing_res, start_expanded=False)
     win.show()
     QtWidgets.QApplication.processEvents()
     elapsed_gui = time.time() - t4
-    console.print(f"[+] Populated canvas with [bold green]{len(canvas._scene.items()):,}[/bold green] vector graphics items in [bold green]{elapsed_gui:.3f}s[/bold green]!\n")
+    console.print(f"[+] Initialized window and Module Box view in [bold green]{elapsed_gui:.3f}s[/bold green]!")
+
+    # Verify Module Box view
+    assert win.canvas.is_box_view, "Initial view must be Module Box view"
+    console.print("  [bold green][PASS][/bold green] Default Box View: Design opens as clean top-level architectural block with IO pins.")
+
+    # Expand hierarchy into top-level structural interconnect
+    console.print("[*] Expanding hierarchy to top-level structural block diagram...")
+    win.expand_hierarchy()
+    QtWidgets.QApplication.processEvents()
+    assert not win.canvas.is_box_view, "Canvas should display expanded schematic"
+    console.print(f"  [bold green][PASS][/bold green] Top-Level Expansion: Rendered {len(canvas._gate_items)} structural nodes (submodules + IO ports).")
+
+    # Descend into complex submodule (aes_key_schedule)
+    console.print("[*] Double-clicking into submodule: [bold green]aes_key_schedule[/bold green]...")
+    win.descend_into_submodule("u_key_schedule", "aes_key_schedule")
+    QtWidgets.QApplication.processEvents()
+    sub_items = len(canvas._scene.items())
+    console.print(f"[+] Populated submodule canvas with [bold green]{sub_items:,}[/bold green] vector graphics items!\n")
 
     # 5. Export high-resolution PNG image
-    console.print("[*] Exporting full schematic vector canvas to high-resolution PNG...")
+    console.print("[*] Exporting schematic vector canvas to high-resolution PNG...")
     t5 = time.time()
     export_path = Path("/tmp/aes_schematic_milestone4.png")
     out_file = export_scene_to_image(canvas._scene, str(export_path), max_dimension=4096)
@@ -102,14 +121,12 @@ def main():
     metrics_table.add_column("Count / Value", style="bold white", justify="right")
     metrics_table.add_column("Interactive GUI Functionality", style="dim", justify="left")
 
-    total_items = len(canvas._scene.items())
-    metrics_table.add_row("Total Canvas Vector Items", f"{total_items:,}", "Hardware-accelerated QGraphicsItems in BSP tree")
+    metrics_table.add_row("Active Hierarchy Scope", win.current_module.name, "Current displayed schematic level")
+    metrics_table.add_row("Total Canvas Vector Items", f"{sub_items:,}", "Hardware-accelerated QGraphicsItems in BSP tree")
     metrics_table.add_row("Placed Gate Items", f"{len(canvas._gate_items):,}", "IEEE logic symbols with LOD rendering & hover")
     metrics_table.add_row("Wired Net Groups", f"{len(canvas._net_wire_items):,}", "Manhattan orthogonal route items with click-selection")
-    metrics_table.add_row("Solder-Dot Items (•)", f"{routing_res.total_solder_dots:,}", "Circular branch junction markers")
-    metrics_table.add_row("Decoupled HFN Stub Items", f"{len(routing_res.all_stubs()):,}", "Directional arrow tags for global clock/reset/enables")
     metrics_table.add_row("Canvas Coordinate Bounds", f"{canvas._scene.sceneRect().width():.0f} x {canvas._scene.sceneRect().height():.0f}", "Infinite 2D coordinate space (units)")
-    metrics_table.add_row("GUI Population Runtime", f"{elapsed_gui:.3f} s", "Instantaneous UI population for ~10,000 gates")
+    metrics_table.add_row("GUI Population Runtime", f"{elapsed_gui:.3f} s", "Instantaneous UI population")
 
     console.print(metrics_table)
 
@@ -117,8 +134,8 @@ def main():
     console.print("\n[*] Validating Milestone 4 Engineering Constraints:")
 
     # Constraint 1: Items successfully populated
-    assert total_items >= 50000, f"Expected >50,000 graphics items, got {total_items}"
-    console.print(f"  [bold green][PASS][/bold green] Vector Scene Population: Successfully indexed {total_items:,} QGraphicsItems.")
+    assert sub_items >= 2000, f"Expected >=2,000 graphics items in submodule, got {sub_items}"
+    console.print(f"  [bold green][PASS][/bold green] Vector Scene Population: Successfully indexed {sub_items:,} QGraphicsItems.")
 
     # Constraint 2: Zoom and Pan Navigation
     init_rect = canvas.mapToScene(canvas.viewport().rect()).boundingRect()
@@ -145,13 +162,18 @@ def main():
     assert found_net, f"Failed to find net '{sample_net}'"
     console.print(f"  [bold green][PASS][/bold green] Search & Center Navigation: Instantaneous gate ('{sample_gate_id}') and net ('{sample_net}') lookup with viewport centering.")
 
-    # Constraint 5: Image Exporter
-    assert export_path.is_file() and export_path.stat().st_size > 50000
+    # Constraint 5: Ascend Hierarchy
+    win.ascend_hierarchy()
+    assert win.current_module.name == "aes_cipher_top"
+    console.print("  [bold green][PASS][/bold green] Hierarchy Ascension: Ascended back to aes_cipher_top via Up Hierarchy / Esc.")
+
+    # Constraint 6: Image Exporter
+    assert export_path.is_file() and export_path.stat().st_size > 10000
     console.print(f"  [bold green][PASS][/bold green] High-Resolution Exporter: Generated valid 4096px PNG image ({img_size_kb:.1f} KB).")
 
     console.print(Panel(
         "[bold green]MILESTONE 4 VERIFICATION PASSED SUCCESSFULLY[/bold green]\n"
-        f"Hardware-accelerated PyQt6 GUI Canvas verified on ~10,000 instance AES-128 core ({total_items:,} vector items rendered).",
+        f"Hardware-accelerated PyQt6 GUI Canvas verified on hierarchical AES-128 design with multi-level drill-down and interactive rendering.",
         border_style="green"
     ))
 

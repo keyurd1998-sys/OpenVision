@@ -92,11 +92,60 @@ class GateGraphicsItem(QtWidgets.QGraphicsItem):
         self.update()
         super().hoverLeaveEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        if self.node.kind == "MODULE" and hasattr(self.node.ref, "cell_type"):
+            views = self.scene().views() if self.scene() else []
+            for v in views:
+                if hasattr(v, "submodule_activated"):
+                    v.submodule_activated.emit(self.node.name, self.node.ref.cell_type)
+                    event.accept()
+                    return
+        super().mouseDoubleClickEvent(event)
+
     def paint(self, painter: QPainter, option, widget=None):
         lod = option.levelOfDetailFromTransform(painter.worldTransform())
 
         w = self._width
         h = self._height
+
+        # Handle hierarchical MODULE block rendering
+        if self.node.kind == "MODULE":
+            painter.setBrush(QBrush(QColor("#101927")))
+            if self.isSelected():
+                mod_pen = QPen(Palette.GATE_BORDER_SELECTED, 2.5)
+            elif self._is_hovered:
+                mod_pen = QPen(QColor("#38BDF8"), 2.0)
+            else:
+                mod_pen = QPen(QColor("#0284C7"), 1.8)
+            painter.setPen(mod_pen)
+            painter.drawRoundedRect(QRectF(0, 0, w, h), 6.0, 6.0)
+
+            # Header bar
+            header_rect = QRectF(0, 0, w, 22.0)
+            painter.setBrush(QBrush(QColor("#0C4A6E")))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(header_rect, 6.0, 6.0)
+            painter.fillRect(QRectF(0, 16.0, w, 6.0), QColor("#0C4A6E"))
+
+            # Header text (Submodule Type)
+            painter.setPen(QPen(QColor("#38BDF8")))
+            font_hdr = QFont("monospace", 8, QFont.Weight.Bold)
+            painter.setFont(font_hdr)
+            inst_type = getattr(self.node.ref, "cell_type", "MODULE")
+            painter.drawText(QRectF(6.0, 2.0, w - 12.0, 18.0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, f"[MODULE] {inst_type}")
+
+            # Center instance name
+            painter.setPen(QPen(QColor("#FFFFFF")))
+            font_name = QFont("monospace", 10, QFont.Weight.Bold)
+            painter.setFont(font_name)
+            painter.drawText(QRectF(10.0, 24.0, w - 20.0, h - 48.0), Qt.AlignmentFlag.AlignCenter, self.node.name)
+
+            # Expand hint at bottom
+            painter.setPen(QPen(QColor("#7DD3FC") if self._is_hovered else QColor("#64748B")))
+            font_hint = QFont("monospace", 7)
+            painter.setFont(font_hint)
+            painter.drawText(QRectF(4.0, h - 20.0, w - 8.0, 16.0), Qt.AlignmentFlag.AlignCenter, "Double-Click to Expand")
+            return
 
         # Pen & Brush selection
         if self.isSelected():

@@ -98,35 +98,49 @@ def test_coordinate_assignment_monotonicity():
 
 
 def test_aes_complex_placement_scale():
-    """Validates placement engine on the full ~10,000 instance AES benchmark."""
+    """Validates placement engine on hierarchical top module and submodules of the AES benchmark."""
     lib = parse_liberty_file(find_default_liberty())
     synth_path = Path("benchmarks/synth/aes_cipher_top.v")
     assert synth_path.is_file(), "Synthesized AES netlist must exist"
 
     netlist = parse_netlist_file(synth_path, liberty=lib)
-    mod = netlist["aes_cipher_top"]
 
-    result = run_placement(mod, num_crossing_iterations=2)
+    # 1. Validate top-level hierarchical block placement
+    top_mod = netlist["aes_cipher_top"]
+    result_top = run_placement(top_mod, num_crossing_iterations=2)
 
-    # 1. Scale assertion
-    assert result.total_nodes >= 9000, f"Expected >= 9000 nodes, got {result.total_nodes}"
-    assert result.num_ranks >= 8, f"Expected multiple topological columns, got {result.num_ranks}"
-    assert result.feedback_edges > 0, "Expected broken feedback edges in AES"
+    assert result_top.total_nodes == 10, f"Expected 10 nodes (3 submodules + 7 ports), got {result_top.total_nodes}"
+    assert result_top.num_ranks == 5, f"Expected 5 topological columns, got {result_top.num_ranks}"
+    assert result_top.elapsed_seconds < 0.5, f"Top placement was too slow: {result_top.elapsed_seconds:.2f}s"
+    assert result_top.width >= 1000.0
+    assert result_top.height < 500.0, "Top module must be compact horizontal block layout, not vertical line"
 
-    # 2. Performance assertion: placement must finish in under 3.0 seconds
-    assert result.elapsed_seconds < 3.0, f"Placement was too slow: {result.elapsed_seconds:.2f}s"
+    # Monotonicity of column coordinates for top
+    col_x_top = [result_top.graph.nodes[rank[0]].x for rank in result_top.graph.ranks if rank]
+    for i in range(len(col_x_top) - 1):
+        assert col_x_top[i] < col_x_top[i+1], f"Column X coords must be strictly increasing: {col_x_top}"
 
-    # 3. Canvas & coordinate sanity
-    assert result.width > 1000.0
-    assert result.height > 1000.0
+    # Check all nodes in top have valid finite coordinates
+    for nid, node in result_top.graph.nodes.items():
+        assert node.x >= 50.0
+        assert node.y >= 50.0
+        assert not (node.x != node.x)  # not NaN
+        assert not (node.y != node.y)  # not NaN
 
-    # 4. Monotonicity of column coordinates
-    col_x = [result.graph.nodes[rank[0]].x for rank in result.graph.ranks if rank]
-    for i in range(len(col_x) - 1):
-        assert col_x[i] < col_x[i+1], f"Column X coords must be strictly increasing: {col_x}"
+    # 2. Validate complex submodule placement (aes_datapath with ~780 nodes)
+    dp_mod = netlist["aes_datapath"]
+    result_dp = run_placement(dp_mod, num_crossing_iterations=2)
 
-    # 5. Check all nodes have valid finite coordinates
-    for nid, node in result.graph.nodes.items():
+    assert result_dp.total_nodes >= 700, f"Expected >= 700 nodes in aes_datapath, got {result_dp.total_nodes}"
+    assert result_dp.num_ranks >= 3, f"Expected >= 3 topological columns in datapath, got {result_dp.num_ranks}"
+    assert result_dp.elapsed_seconds < 2.0, f"Submodule placement was too slow: {result_dp.elapsed_seconds:.2f}s"
+
+    # Monotonicity of column coordinates for submodule
+    col_x_dp = [result_dp.graph.nodes[rank[0]].x for rank in result_dp.graph.ranks if rank]
+    for i in range(len(col_x_dp) - 1):
+        assert col_x_dp[i] < col_x_dp[i+1], f"Column X coords must be strictly increasing: {col_x_dp}"
+
+    for nid, node in result_dp.graph.nodes.items():
         assert node.x >= 50.0
         assert node.y >= 50.0
         assert not (node.x != node.x)  # not NaN

@@ -32,6 +32,7 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
     net_selected = pyqtSignal(str)          # Emits net name when selected
     gate_selected = pyqtSignal(str)         # Emits node/instance name when selected
     module_expanded = pyqtSignal(object)    # Emits NetlistModule when double clicked
+    submodule_activated = pyqtSignal(str, str) # Emits (instance_name, submodule_type) when submodule block is double clicked
     cursor_moved = pyqtSignal(float, float) # Emits (canvas_x, canvas_y)
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None):

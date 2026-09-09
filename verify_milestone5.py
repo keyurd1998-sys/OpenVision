@@ -58,15 +58,16 @@ def main():
     top_mod = netlist.top_module
     console.print(f"[+] Ingested [bold green]{len(top_mod.instances):,}[/bold green] instances and [bold green]{len(top_mod.ports)}[/bold green] ports in [dim]{time.time() - t1:.2f}s[/dim].")
 
-    # 3. Initialize ConeTracer
-    console.print("\n[*] Initializing Logic Cone Tracer engine...")
+    # 3. Initialize ConeTracer on standard-cell submodule (aes_sbox_lut)
+    eval_mod = netlist["aes_sbox_lut"]
+    console.print(f"\n[*] Initializing Logic Cone Tracer engine on [bold green]{eval_mod.name}[/bold green] ({len(eval_mod.instances)} Sky130 gates)...")
     t2 = time.time()
-    tracer = ConeTracer(top_mod)
+    tracer = ConeTracer(eval_mod)
     console.print(f"[+] Connectivity graph indexed in [dim]{time.time() - t2:.3f}s[/dim].")
 
     # 4. Perform Backward Fanin Tracing
-    target_gate = "_10000_"
-    console.print(f"\n[*] Tracing Fanin Cone for root gate: [bold yellow]{target_gate}[/bold yellow] ({top_mod.instances[target_gate].cell_type})...")
+    target_gate = list(eval_mod.instances.keys())[-1]
+    console.print(f"\n[*] Tracing Fanin Cone for root gate: [bold yellow]{target_gate}[/bold yellow] ({eval_mod.instances[target_gate].cell_type})...")
     
     t_fi1 = time.time()
     cone_fi1 = tracer.trace_fanin(target_gate, depth=1)
@@ -82,19 +83,20 @@ def main():
 
     console.print(f"  [+] 1-Level Fanin:  [bold green]{cone_fi1.total_gates}[/bold green] gates in [dim]{dur_fi1 * 1000:.2f} ms[/dim]")
     console.print(f"  [+] 3-Level Fanin:  [bold green]{cone_fi3.total_gates}[/bold green] gates in [dim]{dur_fi3 * 1000:.2f} ms[/dim]")
-    console.print(f"  [+] Full Fanin Cone (bounded by registers): [bold green]{cone_fifull.total_gates}[/bold green] gates, [bold green]{cone_fifull.total_boundaries}[/bold green] boundaries, depth [bold green]{cone_fifull.max_depth_reached}[/bold green] in [dim]{dur_fifull * 1000:.2f} ms[/dim]")
+    console.print(f"  [+] Full Fanin Cone (bounded by registers/IO): [bold green]{cone_fifull.total_gates}[/bold green] gates, [bold green]{cone_fifull.total_boundaries}[/bold green] boundaries, depth [bold green]{cone_fifull.max_depth_reached}[/bold green] in [dim]{dur_fifull * 1000:.2f} ms[/dim]")
 
     # 5. Perform Forward Fanout Tracing
-    console.print(f"\n[*] Tracing Fanout Cone from gate: [bold yellow]{target_gate}[/bold yellow]...")
+    target_in = list(eval_mod.instances.keys())[0]
+    console.print(f"\n[*] Tracing Fanout Cone from gate: [bold yellow]{target_in}[/bold yellow]...")
     t_fo = time.time()
-    cone_fo = tracer.trace_fanout(target_gate, depth=3, stop_at_dff=True)
+    cone_fo = tracer.trace_fanout(target_in, depth=3, stop_at_dff=True)
     dur_fo = time.time() - t_fo
     console.print(f"  [+] 3-Level Fanout: [bold green]{cone_fo.total_gates}[/bold green] gates, [bold green]{cone_fo.total_boundaries}[/bold green] boundaries in [dim]{dur_fo * 1000:.2f} ms[/dim]")
 
     # 6. Extract Submodule and Place/Route Isolated Cone
     console.print(f"\n[*] Extracting isolated sub-schematic module for 3-level fanin cone ({cone_fi3.total_gates} gates)...")
     t_sub = time.time()
-    submod = cone_fi3.extract_submodule(top_mod, submodule_name="aes_isolated_cone")
+    submod = cone_fi3.extract_submodule(eval_mod, submodule_name="aes_isolated_cone")
     dur_sub = time.time() - t_sub
     console.print(f"  [+] Sub-module created with [bold green]{len(submod.instances)}[/bold green] gates and [bold green]{len(submod.ports)}[/bold green] boundary ports in [dim]{dur_sub * 1000:.2f} ms[/dim]")
 

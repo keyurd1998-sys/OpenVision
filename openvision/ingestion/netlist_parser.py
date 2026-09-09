@@ -145,12 +145,30 @@ class NetlistModule:
         self.assigns.append(assign)
         self._connectivity_built = False
 
-    def link_library(self, lib: LibertyLibrary) -> None:
-        """Annotates each instance in the module with its Liberty symbol classification."""
+    def link_library(self, lib: Optional[LibertyLibrary]) -> None:
+        """Annotates each instance in the module with its Liberty symbol classification or submodule hierarchy."""
         for inst in self.instances.values():
-            cell = lib.get_cell(inst.cell_type)
+            cell = lib.get_cell(inst.cell_type) if lib else None
             if cell:
                 inst.classification = classify_cell(cell)
+            elif hasattr(self, "_netlist") and self._netlist and inst.cell_type in self._netlist.modules:
+                sub_def = self._netlist.modules[inst.cell_type]
+                pin_roles: Dict[str, PinRole] = {}
+                for port_name, port in sub_def.ports.items():
+                    if port.direction in ("output", "inout"):
+                        pin_roles[port_name] = PinRole.OUTPUT
+                    elif "clk" in port_name.lower():
+                        pin_roles[port_name] = PinRole.CLOCK
+                    elif "rst" in port_name.lower():
+                        pin_roles[port_name] = PinRole.RESET
+                    else:
+                        pin_roles[port_name] = PinRole.INPUT
+                inst.classification = SymbolClassification(
+                    cell_name=inst.cell_type,
+                    gate_type=GateType.MACRO,
+                    pin_roles=pin_roles,
+                    description=f"Hierarchical Module: {inst.cell_type}",
+                )
             else:
                 inst.classification = SymbolClassification(
                     cell_name=inst.cell_type,
@@ -167,11 +185,15 @@ class NetlistModule:
         # Primary input ports drive nets
         for port in self.ports.values():
             if port.direction in ("input", "inout"):
-                for bit in port.bit_names:
-                    self._drivers.setdefault(bit, []).append(("PORT", bit))
+                self._drivers.setdefault(port.name, []).append(("PORT", port.name))
+                if port.is_bus:
+                    for bit in port.bit_names:
+                        self._drivers.setdefault(bit, []).append(("PORT", port.name))
             if port.direction in ("output", "inout"):
-                for bit in port.bit_names:
-                    self._loads.setdefault(bit, []).append(("PORT", bit))
+                self._loads.setdefault(port.name, []).append(("PORT", port.name))
+                if port.is_bus:
+                    for bit in port.bit_names:
+                        self._loads.setdefault(bit, []).append(("PORT", port.name))
 
         # Assign statements: rhs drives lhs
         for asn in self.assigns:
@@ -299,8 +321,10 @@ class Netlist:
             return self.modules[self.top_module_name]
         return next(iter(self.modules.values())) if self.modules else None
 
-    def link_library(self, lib: LibertyLibrary) -> None:
+    def link_library(self, lib: Optional[LibertyLibrary]) -> None:
         """Links standard cell library to all modules in the netlist."""
+        for mod in self.modules.values():
+            mod._netlist = self
         for mod in self.modules.values():
             mod.link_library(lib)
 
@@ -531,6 +555,9 @@ def parse_netlist_text(text: str, filepath: Optional[Path] = None) -> Netlist:
 
         if i < n and tokens[i] == "endmodule":
             i += 1
+
+    for mod in netlist.modules.values():
+        mod._netlist = netlist
 
     return netlist
 
