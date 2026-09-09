@@ -11,39 +11,42 @@ OpenVision is an open-source schematic viewer and interactive visualization tool
 
 Unlike generic graph visualizers, OpenVision renders gate-level netlists with authentic IEEE Std 91 logic gate shapes, clean Manhattan 90-degree orthogonal routing, multi-level hierarchical drill-down, and full-net interactive highlighting.
 
+![OpenVision GUI Interface](Docs/snap/GUI_interface.png)
+
 ---
 
 ## Key Features
 
-- **Hierarchical Exploration:**
-  - Designs open in a clean, high-level Module Box view showing boundary input and output pins.
-  - Double-click any submodule box to descend into its interior logic.
-  - Ascend back to parent levels using the breadcrumb toolbar or the Escape key.
+### 1. Hierarchical Exploration
+Designs open in a clean, high-level Module Box view showing boundary input and output pins. Double-click any submodule box to descend into its interior logic. Ascend back to parent levels using the breadcrumb toolbar or the Escape key.
 
-- **Standard IEEE Logic Symbols:**
-  - Dynamic Boolean function recognition directly parses PDK Liberty (`.lib`) timing equations.
-  - Renders true IEEE Std 91 gate shapes for Inverters, Buffers, AND, NAND, OR, NOR, XOR, XNOR, MUX2, and DFF cells.
-  - Automatically sizes inverters and buffers compactly to maintain clear schematic density.
+![Top Module Box View](Docs/snap/top%20module%20box%20view.png)
 
-- **Collision-Free Manhattan Orthogonal Routing:**
-  - 100% orthogonal 90-degree wire routing with Left-Edge track assignment.
-  - Inter-column channels and perimeter corridors guarantee zero wire crossings over instance bodies.
-  - Circular solder-dot junctions (bullet markers) inserted at 3-way and 4-way branch points.
-  - High-Fanout Nets (clocks, resets, enables) decoupled into local named tag badges.
+Expanding hierarchy reveals the top-level structural interconnect diagram with clear inter-module buses:
 
-- **Interactive Net Highlighting:**
-  - Hovering or clicking on any wire segment illuminates the entire net from its driver pin to every destination pin across all bends and branches.
+![Top Structural Diagram](Docs/snap/top%20structural%20diagram.png)
 
-- **Logic Cone Tracing:**
-  - Trace backward combinational fanin cones and forward fanout cones.
-  - Automatic boundary stopping at flip-flop/register pins or primary ports.
-  - Isolate extracted logic cones for focused inspection.
+### 2. Standard IEEE Logic Symbols & Collision-Free Routing
+- **Dynamic Boolean Classification:** Recognizes logic functions directly from PDK Liberty (`.lib`) timing equations.
+- **IEEE Std 91 Shapes:** Authentic symbols for AND, NAND, OR, NOR, XOR, XNOR, MUX2, compact Inverters/Buffers, and D Flip-Flops with bottom clock triangles.
+- **100% Collision-Free Manhattan Routing:** Inter-column channels and perimeter bypass corridors guarantee zero wire crossings over instance bodies.
+- **Solder Dots & HFN Decoupling:** Solder dots (bullet markers) at branch points; high-fanout nets decoupled into named stubs.
 
-- **Multi-PDK Support:**
-  - Out-of-the-box compatibility with SkyWater 130nm (`sky130_fd_sc_hd`, `sky130_fd_sc_hs`), GlobalFoundries 180nm (`gf180mcu`), Nangate 45nm, and IHP SG13G2.
+![Gate-Level Schematic](Docs/snap/gate%20level%20schematic.png)
 
-- **High-Resolution Export:**
-  - Export schematics to publication-ready PNG and vector images.
+### 3. Interactive Full-Net Highlighting
+Hovering or clicking on any wire segment illuminates the entire electrical net from its source driver pin to every destination sink pin across all bends, branches, and solder dots, accompanied by detailed net metadata tooltips.
+
+![Full-Net Interactive Hover Highlighting](Docs/snap/Full-Net%20Interactive%20Hover%20Highlighting.png)
+
+### 4. Logic Cone Tracing
+- Trace backward combinational fanin cones and forward fanout cones.
+- Automatic boundary stopping at flip-flop/register pins or primary ports.
+- Isolate extracted logic cones for focused timing path inspection.
+
+### 5. Multi-PDK Support & High-Resolution Export
+- Out-of-the-box compatibility with SkyWater 130nm (`sky130_fd_sc_hd`, `sky130_fd_sc_hs`), GlobalFoundries 180nm (`gf180mcu`), Nangate 45nm, and IHP SG13G2.
+- Export schematics directly to publication-ready high-resolution PNG images.
 
 ---
 
@@ -163,6 +166,8 @@ OpenVision/
 │   └── cli.py             # Unified command-line interface entry point
 ├── benchmarks/            # Benchmark RTL and synthesized reference netlists
 ├── tests/                 # Automated pytest test suite (45 tests)
+├── Docs/                  # Documentation visual snapshots
+│   └── snap/              # UI and schematic captures
 ├── requirements.txt       # Python package dependencies
 ├── setup.py               # Package distribution setup
 └── README.md              # Project documentation
