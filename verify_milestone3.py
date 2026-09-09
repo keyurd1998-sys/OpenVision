@@ -95,30 +95,30 @@ def main():
             non_ortho_count += 1
 
     if non_ortho_count == 0 and routing_res.is_strictly_orthogonal:
-        console.print(f"  [bold green]✓[/bold green] Strict Orthogonality: [bold green]100%[/bold green] of all {len(all_segs):,} wire segments are strictly horizontal or vertical (zero diagonal wires).")
+        console.print(f"  [bold green][PASS][/bold green] Strict Orthogonality: [bold green]100%[/bold green] of all {len(all_segs):,} wire segments are strictly horizontal or vertical (zero diagonal wires).")
     else:
-        console.print(f"  [bold red]✗[/bold red] Non-orthogonal segments found: {non_ortho_count} violations!")
+        console.print(f"  [bold red][FAIL][/bold red] Non-orthogonal segments found: {non_ortho_count} violations!")
 
     # Constraint 2: Solder-dot (•) Junction Insertion
     dots = routing_res.all_solder_dots()
     if len(dots) > 0:
-        console.print(f"  [bold green]✓[/bold green] Solder-Dot Insertion: [bold green]{len(dots):,}[/bold green] solder dots inserted at multi-fanout T-junctions.")
+        console.print(f"  [bold green][PASS][/bold green] Solder-Dot Insertion: [bold green]{len(dots):,}[/bold green] solder dots inserted at multi-fanout T-junctions.")
     else:
-        console.print("  [bold red]✗[/bold red] No solder dots were inserted!")
+        console.print("  [bold red][FAIL][/bold red] No solder dots were inserted!")
 
     # Constraint 3: High-Fanout Net (HFN) Decoupling
     stubs = routing_res.all_stubs()
     if routing_res.decoupled_hfn_count >= 100 and len(stubs) > 0:
-        console.print(f"  [bold green]✓[/bold green] HFN Decoupling: [bold green]{routing_res.decoupled_hfn_count}[/bold green] high-fanout nets decoupled into [bold green]{len(stubs):,}[/bold green] labeled pin stubs (clocks, resets, enables).")
+        console.print(f"  [bold green][PASS][/bold green] HFN Decoupling: [bold green]{routing_res.decoupled_hfn_count}[/bold green] high-fanout nets decoupled into [bold green]{len(stubs):,}[/bold green] labeled pin stubs (clocks, resets, enables).")
     else:
         console.print(f"  [bold yellow]![/bold yellow] HFN Decoupling: {routing_res.decoupled_hfn_count} HFNs decoupled.")
 
     # Constraint 4: Perpendicular Pin Exits
-    console.print("  [bold green]✓[/bold green] Perpendicular Pin Exits: Inputs enter perpendicularly from West, outputs emerge East, clocks/resets enter South.")
+    console.print("  [bold green][PASS][/bold green] Perpendicular Pin Exits: Inputs enter perpendicularly from West, outputs emerge East, clocks/resets enter South.")
 
     # Constraint 5: Execution Speed & Scalability
     if routing_res.elapsed_seconds < 2.0:
-        console.print(f"  [bold green]✓[/bold green] Performance: Full ~10,000-instance routing finished in [bold green]{routing_res.elapsed_seconds:.3f}s[/bold green] (well under 2.0s target).")
+        console.print(f"  [bold green][PASS][/bold green] Performance: Full ~10,000-instance routing finished in [bold green]{routing_res.elapsed_seconds:.3f}s[/bold green] (well under 2.0s target).")
     else:
         console.print(f"  [bold yellow]![/bold yellow] Routing took {routing_res.elapsed_seconds:.3f}s.")
 

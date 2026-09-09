@@ -62,6 +62,30 @@ def main():
         help="Fanout threshold for decoupling high-fanout nets (default: 20).",
     )
     parser.add_argument(
+        "--fanin",
+        type=str,
+        default=None,
+        help="Trace backward fanin logic cone driving the specified instance, port, or net.",
+    )
+    parser.add_argument(
+        "--fanout",
+        type=str,
+        default=None,
+        help="Trace forward fanout logic cone driven by the specified instance, port, or net.",
+    )
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=None,
+        help="Maximum logic depth for cone tracing (default: unbounded, stops at registers/ports).",
+    )
+    parser.add_argument(
+        "--export-cone",
+        type=str,
+        default=None,
+        help="Export isolated logic cone sub-schematic to PNG image.",
+    )
+    parser.add_argument(
         "--version", "-v",
         action="version",
         version=f"OpenVision v{__version__}",
@@ -129,7 +153,44 @@ def main():
         canvas = SchematicCanvas()
         canvas.load_schematic(placement_res, routing_res)
         out_path = export_scene_to_image(canvas._scene, args.export_image)
-        console.print(f"\n[bold green]✓ Exported schematic image to:[/bold green] {out_path}")
+        console.print(f"\n[bold green][SUCCESS] Exported schematic image to:[/bold green] {out_path}")
+
+    active_cone = None
+    if args.fanin or args.fanout:
+        from openvision.cone import ConeTracer
+        tracer = ConeTracer(top_mod)
+        if args.fanin:
+            console.print(f"\n[bold cyan]Tracing Fanin Cone for: {args.fanin}...[/bold cyan]")
+            active_cone = tracer.trace_fanin(args.fanin, depth=args.depth)
+            active_cone.print_summary()
+        elif args.fanout:
+            console.print(f"\n[bold cyan]Tracing Fanout Cone for: {args.fanout}...[/bold cyan]")
+            active_cone = tracer.trace_fanout(args.fanout, depth=args.depth)
+            active_cone.print_summary()
+
+    if args.export_cone:
+        if not active_cone:
+            console.print("[red]Error: --export-cone requires either --fanin or --fanout to be specified.[/red]")
+            sys.exit(1)
+        import os
+        from PyQt6 import QtWidgets
+        from openvision.placement import run_placement
+        from openvision.routing import route_placement
+        from openvision.gui import SchematicCanvas, export_scene_to_image
+
+        if "DISPLAY" not in os.environ and "QT_QPA_PLATFORM" not in os.environ:
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        console.print(f"\n[bold cyan]Extracting isolated cone sub-module ({len(active_cone.instances)} gates)...[/bold cyan]")
+        cone_mod = active_cone.extract_submodule(top_mod)
+        cone_place = run_placement(cone_mod)
+        cone_route = route_placement(cone_place)
+
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        canvas = SchematicCanvas()
+        canvas.load_schematic(cone_place, cone_route)
+        out_path = export_scene_to_image(canvas._scene, args.export_cone)
+        console.print(f"\n[bold green][SUCCESS] Exported isolated cone schematic to:[/bold green] {out_path}")
 
     if args.gui:
         from PyQt6 import QtWidgets
@@ -138,6 +199,10 @@ def main():
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
         win = SchematicWindow()
         win.display_design(top_mod, placement_res, routing_res)
+        if args.fanin:
+            win.trace_node_fanin(args.fanin, depth=args.depth)
+        elif args.fanout:
+            win.trace_node_fanout(args.fanout, depth=args.depth)
         win.show()
         sys.exit(app.exec())
 

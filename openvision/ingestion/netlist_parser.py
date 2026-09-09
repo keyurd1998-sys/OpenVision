@@ -88,7 +88,10 @@ class NetlistInstance:
                 if role not in (PinRole.OUTPUT, PinRole.Q, PinRole.QN, PinRole.SUM, PinRole.COUT, PinRole.SUPPLY)
             ]
             return [self.connections[pin] for pin in input_pins if pin in self.connections and self.connections[pin]]
-        return list(self.connections.values())
+        return [
+            net for pin, net in self.connections.items()
+            if pin.upper() not in ("Y", "X", "Q", "QN", "SUM", "COUT", "OUT", "VDD", "VSS", "VPWR", "VGND") and net
+        ]
 
     def get_output_nets(self) -> List[str]:
         """Returns the list of net names driven by the outputs of this instance."""
@@ -98,7 +101,10 @@ class NetlistInstance:
                 if role in (PinRole.OUTPUT, PinRole.Q, PinRole.QN, PinRole.SUM, PinRole.COUT)
             ]
             return [self.connections[pin] for pin in output_pins if pin in self.connections and self.connections[pin]]
-        return []
+        return [
+            net for pin, net in self.connections.items()
+            if pin.upper() in ("Y", "X", "Q", "QN", "SUM", "COUT", "OUT") and net
+        ]
 
 
 @dataclass

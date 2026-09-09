@@ -235,6 +235,36 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
             return True
         return False
 
+    def highlight_cone(self, cone) -> None:
+        """Highlights all gates and nets belonging to an extracted logic cone."""
+        self._scene.clearSelection()
+
+        # Highlight all gates in cone
+        first_item = None
+        for inst_name in cone.instances:
+            item = self._gate_items.get(f"inst:{inst_name}") or self._gate_items.get(inst_name)
+            if item:
+                item.setSelected(True)
+                if not first_item:
+                    first_item = item
+
+        # Highlight all nets in cone
+        for net_name in cone.nets:
+            for w in self._net_wire_items.get(net_name, []):
+                w.set_highlighted(True)
+            for d in self._net_dot_items.get(net_name, []):
+                d.set_highlighted(True)
+            for s in self._net_stub_items.get(net_name, []):
+                s.set_highlighted(True)
+
+        if first_item:
+            self.centerOn(first_item)
+
+    def clear_cone_highlight(self) -> None:
+        """Clears all gate selections and net highlights."""
+        self._scene.clearSelection()
+        self.highlight_net(None)
+
     # -------------------------------------------------------------------------
     # Mouse & Keyboard Event Handlers
     # -------------------------------------------------------------------------

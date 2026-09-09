@@ -264,7 +264,7 @@ class GateGraphicsItem(QtWidgets.QGraphicsItem):
 
         # Primary Ports (Arrow badges)
         if self.node.kind == "PRIMARY_INPUT":
-            # Points right towards the circuit: [ ▶ ]
+            # Points right towards the circuit: [ > ]
             path.moveTo(0, 0)
             path.lineTo(w - 8.0, 0)
             path.lineTo(w, h / 2.0)
@@ -274,7 +274,7 @@ class GateGraphicsItem(QtWidgets.QGraphicsItem):
             return path
 
         if self.node.kind == "PRIMARY_OUTPUT":
-            # Signals enter from the left: [ ▶ ]
+            # Signals enter from the left: [ > ]
             path.moveTo(0, h / 2.0)
             path.lineTo(8.0, 0)
             path.lineTo(w, 0)
@@ -315,3 +315,39 @@ class GateGraphicsItem(QtWidgets.QGraphicsItem):
                     bubbles.append(bp)
 
         return bubbles
+
+    def contextMenuEvent(self, event):
+        """Right-click context menu for incremental logic cone analysis."""
+        menu = QtWidgets.QMenu()
+        act_fanin_1 = menu.addAction("Trace Fanin (1 Level)")
+        act_fanin_full = menu.addAction("Trace Fanin (Full Cone)")
+        menu.addSeparator()
+        act_fanout_1 = menu.addAction("Trace Fanout (1 Level)")
+        act_fanout_full = menu.addAction("Trace Fanout (Full Cone)")
+        menu.addSeparator()
+        act_clear = menu.addAction("Clear Cone Highlight")
+
+        selected_action = menu.exec(event.screenPos())
+        if not selected_action:
+            return
+
+        canvas = self.scene().views()[0] if self.scene() and self.scene().views() else None
+        if not canvas:
+            return
+
+        win = canvas.window()
+        if selected_action == act_fanin_1:
+            if hasattr(win, "trace_node_fanin"):
+                win.trace_node_fanin(self.node.name, depth=1)
+        elif selected_action == act_fanin_full:
+            if hasattr(win, "trace_node_fanin"):
+                win.trace_node_fanin(self.node.name, depth=None)
+        elif selected_action == act_fanout_1:
+            if hasattr(win, "trace_node_fanout"):
+                win.trace_node_fanout(self.node.name, depth=1)
+        elif selected_action == act_fanout_full:
+            if hasattr(win, "trace_node_fanout"):
+                win.trace_node_fanout(self.node.name, depth=None)
+        elif selected_action == act_clear:
+            if hasattr(canvas, "clear_cone_highlight"):
+                canvas.clear_cone_highlight()

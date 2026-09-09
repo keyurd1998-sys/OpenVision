@@ -93,16 +93,16 @@ def main():
             if u.rank >= v.rank:
                 violations += 1
     if violations == 0:
-        console.print("  [bold green]✓[/bold green] Monotonicity: 100% of forward edges flow strictly left-to-right.")
+        console.print("  [bold green][PASS][/bold green] Monotonicity: 100% of forward edges flow strictly left-to-right.")
     else:
-        console.print(f"  [bold red]✗[/bold red] Monotonicity: {violations} rank violations found.")
+        console.print(f"  [bold red][FAIL][/bold red] Monotonicity: {violations} rank violations found.")
 
     # Constraint B: Coordinate finiteness
     nan_count = sum(1 for n in result.graph.nodes.values() if n.x != n.x or n.y != n.y)
     if nan_count == 0:
-        console.print("  [bold green]✓[/bold green] Coordinate Sanity: 100% of nodes placed with valid finite (X, Y) coordinates.")
+        console.print("  [bold green][PASS][/bold green] Coordinate Sanity: 100% of nodes placed with valid finite (X, Y) coordinates.")
     else:
-        console.print(f"  [bold red]✗[/bold red] Coordinate Sanity: {nan_count} NaN coordinates.")
+        console.print(f"  [bold red][FAIL][/bold red] Coordinate Sanity: {nan_count} NaN coordinates.")
 
     # Constraint C: Cycle Freedom
     visited = set()
@@ -118,9 +118,9 @@ def main():
         return False
     cycle_found = any(has_cycle(n) for n in result.graph.nodes if n not in visited)
     if not cycle_found:
-        console.print("  [bold green]✓[/bold green] Cycle Freedom: Graph is a verified strict Directed Acyclic Graph (DAG).")
+        console.print("  [bold green][PASS][/bold green] Cycle Freedom: Graph is a verified strict Directed Acyclic Graph (DAG).")
     else:
-        console.print("  [bold red]✗[/bold red] Cycle Freedom: Unbroken directed cycle detected.")
+        console.print("  [bold red][FAIL][/bold red] Cycle Freedom: Unbroken directed cycle detected.")
 
     if violations == 0 and nan_count == 0 and not cycle_found:
         console.print(Panel("[bold green]Milestone 2 Placement Engine successfully verified![/bold green]", border_style="green"))

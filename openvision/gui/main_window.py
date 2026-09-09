@@ -130,6 +130,11 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self._liberty_file: Optional[Path] = None
         self._placement_res: Optional[PlacementResult] = None
         self._routing_res: Optional[RoutingResult] = None
+        self._full_module = None
+        self._full_placement_res: Optional[PlacementResult] = None
+        self._full_routing_res: Optional[RoutingResult] = None
+        self._current_cone = None
+        self._selected_node_name: Optional[str] = None
 
         # 1. Central Canvas Widget
         self.canvas = SchematicCanvas(self)
@@ -185,6 +190,11 @@ class SchematicWindow(QtWidgets.QMainWindow):
         QtWidgets.QApplication.processEvents()
         self._routing_res = route_placement(self._placement_res, hfn_threshold=hfn_threshold)
 
+        # Save full references for cone restoration
+        self._full_module = top_mod
+        self._full_placement_res = self._placement_res
+        self._full_routing_res = self._routing_res
+
         # Populate Canvas
         self.status_left.setText("Populating canvas graphics items...")
         QtWidgets.QApplication.processEvents()
@@ -212,6 +222,10 @@ class SchematicWindow(QtWidgets.QMainWindow):
         """Displays pre-computed placement and routing results without re-computing."""
         self._placement_res = placement_res
         self._routing_res = routing_res
+        self._full_module = module
+        self._full_placement_res = placement_res
+        self._full_routing_res = routing_res
+
         self.canvas.load_schematic(placement_res, routing_res)
         self._populate_hierarchy_tree(module)
         self.setWindowTitle(f"OpenVision - [{module.name}] ({len(module.instances):,} gates)")
@@ -323,6 +337,44 @@ class SchematicWindow(QtWidgets.QMainWindow):
         btn_clear.clicked.connect(self._clear_search)
         tb.addWidget(btn_clear)
 
+        # Cone Tracing Toolbar Section
+        tb.addSeparator()
+        lbl_cone = QtWidgets.QLabel(" Cone: ")
+        lbl_cone.setStyleSheet("color: #cfd8dc; font-weight: bold;")
+        tb.addWidget(lbl_cone)
+
+        self.spin_cone_depth = QtWidgets.QSpinBox()
+        self.spin_cone_depth.setRange(0, 50)
+        self.spin_cone_depth.setValue(1)
+        self.spin_cone_depth.setSpecialValueText("Full")
+        self.spin_cone_depth.setToolTip("Cone logic depth (0 for full cone to register boundary)")
+        tb.addWidget(self.spin_cone_depth)
+
+        btn_fanin = QtWidgets.QPushButton("Fanin")
+        btn_fanin.setStyleSheet("background-color: #00838f; color: white; padding: 3px 8px; border-radius: 3px;")
+        btn_fanin.setToolTip("Trace Fanin cone driving the currently selected gate")
+        btn_fanin.clicked.connect(self._on_toolbar_fanin)
+        tb.addWidget(btn_fanin)
+
+        btn_fanout = QtWidgets.QPushButton("Fanout")
+        btn_fanout.setStyleSheet("background-color: #00838f; color: white; padding: 3px 8px; border-radius: 3px;")
+        btn_fanout.setToolTip("Trace Fanout cone driven by the currently selected gate")
+        btn_fanout.clicked.connect(self._on_toolbar_fanout)
+        tb.addWidget(btn_fanout)
+
+        btn_isolate = QtWidgets.QPushButton("Isolate")
+        btn_isolate.setStyleSheet("background-color: #4527a0; color: white; padding: 3px 8px; border-radius: 3px;")
+        btn_isolate.setToolTip("Place and route strictly the extracted logic cone into an isolated sub-schematic")
+        btn_isolate.clicked.connect(self.isolate_current_cone)
+        tb.addWidget(btn_isolate)
+
+        self.btn_full_design = QtWidgets.QPushButton("Full Design")
+        self.btn_full_design.setStyleSheet("background-color: #2e7d32; color: white; padding: 3px 8px; border-radius: 3px;")
+        self.btn_full_design.setToolTip("Return to the full top-level design schematic")
+        self.btn_full_design.clicked.connect(self.restore_full_design)
+        self.btn_full_design.setVisible(False)
+        tb.addWidget(self.btn_full_design)
+
         tb.addSeparator()
         tb.addAction(self.act_export_png)
 
@@ -409,7 +461,80 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self.status_mid.setText(f"Selected Net: [bold]{net_name}[/bold] (fanout={fo})")
 
     def _on_gate_selected(self, gate_name: str):
+        self._selected_node_name = gate_name
         self.status_mid.setText(f"Selected Gate: [bold]{gate_name}[/bold]")
+
+    def _on_toolbar_fanin(self):
+        target = self._selected_node_name or self.edit_search.text().strip()
+        if not target:
+            self.status_mid.setText("Select a gate on the canvas or type its name in Search to trace Fanin")
+            return
+        depth = self.spin_cone_depth.value()
+        self.trace_node_fanin(target, depth=None if depth == 0 else depth)
+
+    def _on_toolbar_fanout(self):
+        target = self._selected_node_name or self.edit_search.text().strip()
+        if not target:
+            self.status_mid.setText("Select a gate on the canvas or type its name in Search to trace Fanout")
+            return
+        depth = self.spin_cone_depth.value()
+        self.trace_node_fanout(target, depth=None if depth == 0 else depth)
+
+    def trace_node_fanin(self, node_name: str, depth: Optional[int] = None):
+        """Extracts and highlights the fanin logic cone for a gate/port."""
+        if not self._full_module:
+            return
+        from openvision.cone import ConeTracer
+        tracer = ConeTracer(self._full_module)
+        cone = tracer.trace_fanin(node_name, depth=depth)
+        self._current_cone = cone
+        self.canvas.highlight_cone(cone)
+        depth_str = f"depth={cone.max_depth_reached}"
+        self.status_mid.setText(f"Fanin Cone: {node_name} ({len(cone.instances)} gates, {len(cone.boundary_endpoints)} boundaries, {depth_str})")
+
+    def trace_node_fanout(self, node_name: str, depth: Optional[int] = None):
+        """Extracts and highlights the fanout logic cone for a gate/port."""
+        if not self._full_module:
+            return
+        from openvision.cone import ConeTracer
+        tracer = ConeTracer(self._full_module)
+        cone = tracer.trace_fanout(node_name, depth=depth)
+        self._current_cone = cone
+        self.canvas.highlight_cone(cone)
+        depth_str = f"depth={cone.max_depth_reached}"
+        self.status_mid.setText(f"Fanout Cone: {node_name} ({len(cone.instances)} gates, {len(cone.boundary_endpoints)} boundaries, {depth_str})")
+
+    def isolate_current_cone(self):
+        """Places, routes, and displays strictly the extracted logic cone."""
+        if not self._current_cone or not self._full_module:
+            self.status_mid.setText("No active logic cone to isolate! Trace a fanin/fanout cone first.")
+            return
+
+        submod = self._current_cone.extract_submodule(self._full_module)
+        cone_placement = run_placement(submod)
+        cone_routing = route_placement(cone_placement)
+
+        self.canvas.load_schematic(cone_placement, cone_routing)
+        self._populate_hierarchy_tree(submod)
+        self.btn_full_design.setVisible(True)
+        self.status_left.setText(f"Isolated Cone: {self._current_cone.root_name} | {len(submod.instances)} gates | {len(cone_routing.net_routes)} nets")
+        self.status_mid.setText(f"Displaying isolated sub-schematic ({cone_placement.num_ranks} columns)")
+        QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
+
+    def restore_full_design(self):
+        """Restores the full top-level design view."""
+        if self._full_placement_res and self._full_routing_res and self._full_module:
+            self.canvas.load_schematic(self._full_placement_res, self._full_routing_res)
+            self._populate_hierarchy_tree(self._full_module)
+            self.btn_full_design.setVisible(False)
+            self.status_left.setText(
+                f"Design: {self._full_module.name} | "
+                f"Gates: {len(self._full_module.instances):,} | "
+                f"Nets: {len(self._full_routing_res.net_routes):,} | "
+                f"Columns: {self._full_placement_res.num_ranks}"
+            )
+            self.status_mid.setText("Restored full design view")
+            QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
 
     def _on_tree_item_clicked(self, item: QtWidgets.QTreeWidgetItem, column: int):
         name = item.text(0)

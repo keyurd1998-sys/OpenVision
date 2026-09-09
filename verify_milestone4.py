@@ -118,7 +118,7 @@ def main():
 
     # Constraint 1: Items successfully populated
     assert total_items >= 50000, f"Expected >50,000 graphics items, got {total_items}"
-    console.print(f"  [bold green]✓[/bold green] Vector Scene Population: Successfully indexed {total_items:,} QGraphicsItems.")
+    console.print(f"  [bold green][PASS][/bold green] Vector Scene Population: Successfully indexed {total_items:,} QGraphicsItems.")
 
     # Constraint 2: Zoom and Pan Navigation
     init_rect = canvas.mapToScene(canvas.viewport().rect()).boundingRect()
@@ -126,7 +126,7 @@ def main():
     zoomed_rect = canvas.mapToScene(canvas.viewport().rect()).boundingRect()
     assert zoomed_rect.width() < init_rect.width(), "Zoom in failed to reduce visible scene width"
     canvas.fit_in_view()
-    console.print("  [bold green]✓[/bold green] Cursor-Centered Zoom & Pan: Smooth mouse wheel scaling and viewport transforms validated.")
+    console.print("  [bold green][PASS][/bold green] Cursor-Centered Zoom & Pan: Smooth mouse wheel scaling and viewport transforms validated.")
 
     # Constraint 3: Interactive Net Highlighting
     sample_net = "sa32[7]"
@@ -135,18 +135,18 @@ def main():
     assert len(highlighted_wires) == len(canvas._net_wire_items[sample_net]), "Net highlighting failed"
     canvas.highlight_net(None)
     assert all(not w._is_highlighted for w in canvas._net_wire_items[sample_net]), "Deselect net failed"
-    console.print(f"  [bold green]✓[/bold green] Interactive Net Highlighting: Highlighted all branches and solder dots for net '{sample_net}' on click.")
+    console.print(f"  [bold green][PASS][/bold green] Interactive Net Highlighting: Highlighted all branches and solder dots for net '{sample_net}' on click.")
 
     # Constraint 4: Search Navigation
     found_gate = canvas.find_and_center_node("inst:_17526_")
     assert found_gate, "Failed to find instance '_17526_'"
     found_net = canvas.find_and_center_net("sa32[7]")
     assert found_net, "Failed to find net 'sa32[7]'"
-    console.print("  [bold green]✓[/bold green] Search & Center Navigation: Instantaneous gate and net lookup with viewport centering.")
+    console.print("  [bold green][PASS][/bold green] Search & Center Navigation: Instantaneous gate and net lookup with viewport centering.")
 
     # Constraint 5: Image Exporter
     assert export_path.is_file() and export_path.stat().st_size > 50000
-    console.print(f"  [bold green]✓[/bold green] High-Resolution Exporter: Generated valid 4096px PNG image ({img_size_kb:.1f} KB).")
+    console.print(f"  [bold green][PASS][/bold green] High-Resolution Exporter: Generated valid 4096px PNG image ({img_size_kb:.1f} KB).")
 
     console.print(Panel(
         "[bold green]MILESTONE 4 VERIFICATION PASSED SUCCESSFULLY[/bold green]\n"
