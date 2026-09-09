@@ -69,8 +69,8 @@ class PlacementResult:
 def run_placement(
     module: NetlistModule,
     num_crossing_iterations: int = 4,
-    col_spacing: float = 120.0,
-    row_spacing: float = 45.0,
+    col_spacing: float = 150.0,
+    row_spacing: float = 55.0,
     center_align_ranks: bool = True,
     decouple_dff: bool = True,
 ) -> PlacementResult:

@@ -39,8 +39,8 @@ class OrthogonalRouter:
         placement: PlacementResult,
         hfn_threshold: int = 20,
         decouple_globals: bool = True,
-        track_pitch: float = 8.0,
-        channel_margin: float = 12.0,
+        track_pitch: float = 12.0,
+        channel_margin: float = 16.0,
         top_corridor_y: float = 25.0,
     ):
         self.placement = placement
@@ -85,10 +85,10 @@ class OrthogonalRouter:
         else:
             self._min_x, self._max_x, self._min_y, self._max_y = 50.0, 500.0, 50.0, 500.0
 
-        self._left_perimeter_x = self._min_x - 30.0
-        self._right_perimeter_x = self._max_x + 30.0
-        self._top_corridor_base = min(self.top_corridor_y, self._min_y - 30.0)
-        self._bottom_corridor_base = self._max_y + 30.0
+        self._left_perimeter_x = self._min_x - 40.0
+        self._right_perimeter_x = self._max_x + 40.0
+        self._top_corridor_base = min(self.top_corridor_y, self._min_y - 40.0)
+        self._bottom_corridor_base = self._max_y + 40.0
         self._corridor_offset = 0.0
 
     def _check_horizontal_collision(self, x1: float, x2: float, y: float, margin: float = 4.0) -> bool:
@@ -172,8 +172,8 @@ class OrthogonalRouter:
             track_count = 0
 
             for ymin, ymax, nname in intervals:
-                # If earliest track finishes before this interval starts (with 10 unit gap)
-                if heap and heap[0][0] + 10.0 <= ymin:
+                # If earliest track finishes before this interval starts (with 14 unit gap)
+                if heap and heap[0][0] + 14.0 <= ymin:
                     end_y, track_id = heapq.heappop(heap)
                 else:
                     track_id = track_count
@@ -293,7 +293,7 @@ class OrthogonalRouter:
         # Group sinks into forward, skip-rank, and feedback
         trunk_y_points: List[float] = [p_src.y]
         corridor_offset = self._corridor_offset
-        self._corridor_offset = (self._corridor_offset + 6.0) % 40.0
+        self._corridor_offset = (self._corridor_offset + 10.0) % 60.0
 
         for pd in p_dsts:
             dst_node = self.graph.nodes[pd.node_id]

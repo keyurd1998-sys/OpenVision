@@ -10,8 +10,8 @@ from openvision.placement.cycle_breaker import PlacementGraph
 
 def assign_coordinates(
     graph: PlacementGraph,
-    col_spacing: float = 120.0,
-    row_spacing: float = 45.0,
+    col_spacing: float = 150.0,
+    row_spacing: float = 55.0,
     center_align_ranks: bool = True,
 ) -> Tuple[float, float, float, float]:
     """

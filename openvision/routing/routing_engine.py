@@ -12,8 +12,8 @@ def route_placement(
     placement: PlacementResult,
     hfn_threshold: int = 20,
     decouple_globals: bool = True,
-    track_pitch: float = 8.0,
-    channel_margin: float = 12.0,
+    track_pitch: float = 12.0,
+    channel_margin: float = 16.0,
     top_corridor_y: float = 25.0,
 ) -> RoutingResult:
     """
