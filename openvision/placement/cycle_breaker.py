@@ -107,7 +107,7 @@ def build_placement_graph(module: NetlistModule, decouple_dff: bool = True) -> P
 
     # 2. Create instance nodes
     for inst in module.instances.values():
-        is_dff = (inst.gate_type in (GateType.DFF, GateType.LATCH))
+        is_dff = (inst.gate_type in (GateType.DFF, GateType.LATCH)) or any(k in inst.cell_type.lower() for k in ("dfx", "dff", "latch", "flop"))
         node_id = f"inst:{inst.name}"
         graph.add_node(
             PlacementNode(
@@ -126,7 +126,7 @@ def build_placement_graph(module: NetlistModule, decouple_dff: bool = True) -> P
 
     for inst in module.instances.values():
         dst_node_id = f"inst:{inst.name}"
-        is_dst_dff = (inst.gate_type in (GateType.DFF, GateType.LATCH))
+        is_dst_dff = (inst.gate_type in (GateType.DFF, GateType.LATCH)) or any(k in inst.cell_type.lower() for k in ("dfx", "dff", "latch", "flop"))
 
         for pin_name, net_expr in inst.connections.items():
             if not net_expr or net_expr in ("1'b0", "1'b1", "1'bx", "1'bz"):

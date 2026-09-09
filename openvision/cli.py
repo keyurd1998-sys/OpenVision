@@ -40,6 +40,17 @@ def main():
         help="Execute Sugiyama layered placement and report placement layout statistics.",
     )
     parser.add_argument(
+        "--route", "-r",
+        action="store_true",
+        help="Execute Manhattan orthogonal auto-routing with solder dots and HFN decoupling.",
+    )
+    parser.add_argument(
+        "--hfn-threshold",
+        type=int,
+        default=20,
+        help="Fanout threshold for decoupling high-fanout nets (default: 20).",
+    )
+    parser.add_argument(
         "--version", "-v",
         action="version",
         version=f"OpenVision v{__version__}",
@@ -80,11 +91,18 @@ def main():
 
     top_mod.print_summary()
 
-    if args.place:
+    placement_res = None
+    if args.place or args.route:
         from openvision.placement import run_placement
         console.print("\n[bold cyan]Running Sugiyama Placement Engine...[/bold cyan]")
         placement_res = run_placement(top_mod)
         placement_res.print_summary()
+
+    if args.route:
+        from openvision.routing import route_placement
+        console.print("\n[bold cyan]Running Manhattan Orthogonal Auto-Router...[/bold cyan]")
+        routing_res = route_placement(placement_res, hfn_threshold=args.hfn_threshold)
+        routing_res.print_summary()
 
 
 if __name__ == "__main__":
