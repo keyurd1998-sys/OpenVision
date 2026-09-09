@@ -126,6 +126,14 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self.resize(1440, 900)
         self.setStyleSheet(DARK_STYLESHEET)
 
+        # Set Window Icon
+        logo_dir = Path(__file__).resolve().parent / "logo"
+        for icon_name in ("app_icon.png", "logo for app.png", "logo.png"):
+            icon_path = logo_dir / icon_name
+            if icon_path.is_file():
+                self.setWindowIcon(QtGui.QIcon(str(icon_path)))
+                break
+
         self._netlist_file: Optional[Path] = None
         self._liberty_file: Optional[Path] = None
         self._placement_res: Optional[PlacementResult] = None

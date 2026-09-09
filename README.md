@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="openvision/gui/logo/logo.png" alt="OpenVision Logo" width="420"/>
+</p>
+
 # OpenVision
 
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)

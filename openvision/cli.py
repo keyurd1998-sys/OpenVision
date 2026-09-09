@@ -218,10 +218,17 @@ def main():
         console.print(f"\n[bold green][SUCCESS] Exported module box image to:[/bold green] {out_path}")
 
     if args.gui:
-        from PyQt6 import QtWidgets
+        from PyQt6 import QtWidgets, QtGui
         from openvision.gui import SchematicWindow
 
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+        logo_dir = Path(__file__).resolve().parent / "gui" / "logo"
+        for icon_name in ("app_icon.png", "logo for app.png", "logo.png"):
+            icon_path = logo_dir / icon_name
+            if icon_path.is_file():
+                app.setWindowIcon(QtGui.QIcon(str(icon_path)))
+                break
+
         win = SchematicWindow()
         win.display_design(top_mod, placement_res, routing_res, start_expanded=args.expanded)
         if args.fanin:
