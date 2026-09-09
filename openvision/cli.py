@@ -45,6 +45,17 @@ def main():
         help="Execute Manhattan orthogonal auto-routing with solder dots and HFN decoupling.",
     )
     parser.add_argument(
+        "--gui", "-g",
+        action="store_true",
+        help="Launch interactive PyQt6 vector schematic viewer window.",
+    )
+    parser.add_argument(
+        "--export-image", "-o",
+        type=str,
+        default=None,
+        help="Export rendered schematic to high-resolution PNG image on disk.",
+    )
+    parser.add_argument(
         "--hfn-threshold",
         type=int,
         default=20,
@@ -92,17 +103,43 @@ def main():
     top_mod.print_summary()
 
     placement_res = None
-    if args.place or args.route:
+    routing_res = None
+
+    if args.place or args.route or args.export_image or args.gui:
         from openvision.placement import run_placement
         console.print("\n[bold cyan]Running Sugiyama Placement Engine...[/bold cyan]")
         placement_res = run_placement(top_mod)
         placement_res.print_summary()
 
-    if args.route:
+    if args.route or args.export_image or args.gui:
         from openvision.routing import route_placement
         console.print("\n[bold cyan]Running Manhattan Orthogonal Auto-Router...[/bold cyan]")
         routing_res = route_placement(placement_res, hfn_threshold=args.hfn_threshold)
         routing_res.print_summary()
+
+    if args.export_image:
+        import os
+        from PyQt6 import QtWidgets
+        from openvision.gui import SchematicCanvas, export_scene_to_image
+
+        if "DISPLAY" not in os.environ and "QT_QPA_PLATFORM" not in os.environ:
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        canvas = SchematicCanvas()
+        canvas.load_schematic(placement_res, routing_res)
+        out_path = export_scene_to_image(canvas._scene, args.export_image)
+        console.print(f"\n[bold green]✓ Exported schematic image to:[/bold green] {out_path}")
+
+    if args.gui:
+        from PyQt6 import QtWidgets
+        from openvision.gui import SchematicWindow
+
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+        win = SchematicWindow()
+        win.load_design(netlist_path, Path(lib_path) if args.liberty else None, hfn_threshold=args.hfn_threshold)
+        win.show()
+        sys.exit(app.exec())
 
 
 if __name__ == "__main__":
