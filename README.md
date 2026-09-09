@@ -68,7 +68,7 @@ sudo apt-get install -y python3 python3-pip python3-venv libgl1-mesa-glx libegl1
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/OpenVision.git
+git clone https://github.com/keyurd1998-sys/OpenVision.git
 cd OpenVision
 
 # Create and activate virtual environment
