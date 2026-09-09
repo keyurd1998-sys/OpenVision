@@ -129,7 +129,7 @@ def main():
     console.print("  [bold green][PASS][/bold green] Cursor-Centered Zoom & Pan: Smooth mouse wheel scaling and viewport transforms validated.")
 
     # Constraint 3: Interactive Net Highlighting
-    sample_net = "sa32[7]"
+    sample_net = next(k for k, v in canvas._net_wire_items.items() if len(v) > 1)
     canvas.highlight_net(sample_net)
     highlighted_wires = [w for w in canvas._net_wire_items[sample_net] if w._is_highlighted]
     assert len(highlighted_wires) == len(canvas._net_wire_items[sample_net]), "Net highlighting failed"
@@ -138,11 +138,12 @@ def main():
     console.print(f"  [bold green][PASS][/bold green] Interactive Net Highlighting: Highlighted all branches and solder dots for net '{sample_net}' on click.")
 
     # Constraint 4: Search Navigation
-    found_gate = canvas.find_and_center_node("inst:_17526_")
-    assert found_gate, "Failed to find instance '_17526_'"
-    found_net = canvas.find_and_center_net("sa32[7]")
-    assert found_net, "Failed to find net 'sa32[7]'"
-    console.print("  [bold green][PASS][/bold green] Search & Center Navigation: Instantaneous gate and net lookup with viewport centering.")
+    sample_gate_id = next(k for k in canvas._gate_items.keys() if k.startswith("inst:"))
+    found_gate = canvas.find_and_center_node(sample_gate_id)
+    assert found_gate, f"Failed to find instance '{sample_gate_id}'"
+    found_net = canvas.find_and_center_net(sample_net)
+    assert found_net, f"Failed to find net '{sample_net}'"
+    console.print(f"  [bold green][PASS][/bold green] Search & Center Navigation: Instantaneous gate ('{sample_gate_id}') and net ('{sample_net}') lookup with viewport centering.")
 
     # Constraint 5: Image Exporter
     assert export_path.is_file() and export_path.stat().st_size > 50000

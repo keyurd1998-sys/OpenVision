@@ -284,8 +284,19 @@ class Netlist:
 
     @property
     def top_module(self) -> Optional[NetlistModule]:
-        if self.top_module_name:
-            return self.modules.get(self.top_module_name)
+        """Returns the top-level module, automatically detecting root of hierarchy if multiple modules exist."""
+        if len(self.modules) > 1:
+            instantiated_cells = set()
+            for mod in self.modules.values():
+                for inst in mod.instances.values():
+                    if inst.cell_type in self.modules:
+                        instantiated_cells.add(inst.cell_type)
+            candidates = [name for name in self.modules if name not in instantiated_cells]
+            if candidates:
+                return self.modules[candidates[-1]]
+
+        if self.top_module_name and self.top_module_name in self.modules:
+            return self.modules[self.top_module_name]
         return next(iter(self.modules.values())) if self.modules else None
 
     def link_library(self, lib: LibertyLibrary) -> None:
