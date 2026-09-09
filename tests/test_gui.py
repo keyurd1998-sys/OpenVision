@@ -351,9 +351,9 @@ def test_inverter_buffer_sizing_and_net_width(qapp):
     assert buf_node is not None
     assert nand_node is not None
 
-    # Inverter/buffer must be 56x34
-    assert inv_node.width == 56.0 and inv_node.height == 34.0
-    assert buf_node.width == 56.0 and buf_node.height == 34.0
+    # Inverter/buffer must be 48x28
+    assert inv_node.width == 48.0 and inv_node.height == 28.0
+    assert buf_node.width == 48.0 and buf_node.height == 28.0
     # Standard NAND gate must be 80x50
     assert nand_node.width == 80.0 and nand_node.height == 50.0
 
@@ -365,5 +365,5 @@ def test_inverter_buffer_sizing_and_net_width(qapp):
     p = QtGui.QPainter(dummy_img)
     opt = QtWidgets.QStyleOptionGraphicsItem()
     wire_item.paint(p, opt)
-    assert p.pen().widthF() == 1.0, f"Expected default wire pen width 1.0, got {p.pen().widthF()}"
+    assert abs(p.pen().widthF() - 0.8) < 1e-4, f"Expected default wire pen width 0.8, got {p.pen().widthF()}"
     p.end()

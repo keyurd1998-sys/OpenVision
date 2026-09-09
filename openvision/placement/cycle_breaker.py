@@ -125,8 +125,8 @@ def build_placement_graph(module: NetlistModule, decouple_dff: bool = True) -> P
             h = 70.0
             kind = "DFF"
         elif is_inv_buf:
-            w = 56.0
-            h = 34.0
+            w = 48.0
+            h = 28.0
             kind = "INSTANCE"
         else:
             w = 80.0

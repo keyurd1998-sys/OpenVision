@@ -124,7 +124,7 @@ class WireGraphicsItem(QtWidgets.QGraphicsItem):
             pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         else:
-            pen = QPen(WirePalette.WIRE_NORMAL, 1.0)
+            pen = QPen(WirePalette.WIRE_NORMAL, 0.8)
             pen.setCapStyle(Qt.PenCapStyle.SquareCap)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
@@ -298,7 +298,7 @@ class HFNStubGraphicsItem(QtWidgets.QGraphicsItem):
             pen = QPen(WirePalette.WIRE_HOVER, 2.2)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         else:
-            pen = QPen(WirePalette.HFN_STUB_WIRE, 1.0)
+            pen = QPen(WirePalette.HFN_STUB_WIRE, 0.8)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)

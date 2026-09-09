@@ -65,7 +65,7 @@ class OrthogonalRouter:
         self._compute_channel_bounds()
 
     def _compute_channel_bounds(self) -> None:
-        """Calculates the physical X boundaries for each vertical routing channel."""
+        """Calculates the physical X boundaries for each vertical routing channel and perimeter corridors."""
         num_ranks = len(self.graph.ranks)
         for r in range(num_ranks - 1):
             curr_nodes = [self.graph.nodes[nid] for nid in self.graph.ranks[r]]
@@ -75,6 +75,30 @@ class OrthogonalRouter:
             x_left_next = min(n.x for n in next_nodes) if next_nodes else x_right_curr + 120.0
 
             self._channel_x_bounds[r] = (x_right_curr, x_left_next)
+
+        # Circuit bounding box & perimeter routing corridors
+        if self.graph.nodes:
+            self._min_x = min(n.x for n in self.graph.nodes.values())
+            self._max_x = max(n.x + n.width for n in self.graph.nodes.values())
+            self._min_y = min(n.y for n in self.graph.nodes.values())
+            self._max_y = max(n.y + n.height for n in self.graph.nodes.values())
+        else:
+            self._min_x, self._max_x, self._min_y, self._max_y = 50.0, 500.0, 50.0, 500.0
+
+        self._left_perimeter_x = self._min_x - 30.0
+        self._right_perimeter_x = self._max_x + 30.0
+        self._top_corridor_base = min(self.top_corridor_y, self._min_y - 30.0)
+        self._bottom_corridor_base = self._max_y + 30.0
+        self._corridor_offset = 0.0
+
+    def _check_horizontal_collision(self, x1: float, x2: float, y: float, margin: float = 4.0) -> bool:
+        """Checks if a horizontal wire segment between x1 and x2 at y intersects any placed node."""
+        xa, xb = min(x1, x2), max(x1, x2)
+        for node in self.graph.nodes.values():
+            if node.y - margin <= y <= node.y + node.height + margin:
+                if max(xa, node.x) < min(xb, node.x + node.width) - 1.0:
+                    return True
+        return False
 
     def _get_channel_track_x(self, channel_idx: int, track_id: int) -> float:
         """Computes the exact X coordinate for a track index within a channel."""
@@ -188,6 +212,17 @@ class OrthogonalRouter:
             if not is_strictly_orthogonal:
                 break
 
+        # Compute bounding box including perimeter corridor routes
+        all_xs = [self._min_x, self._max_x, self._left_perimeter_x, self._right_perimeter_x]
+        all_ys = [self._min_y, self._max_y, self._top_corridor_base, self._bottom_corridor_base]
+        for r in net_routes.values():
+            for s in r.segments:
+                all_xs.append(s.p1.x)
+                all_xs.append(s.p2.x)
+                all_ys.append(s.p1.y)
+                all_ys.append(s.p2.y)
+        routing_bbox = (min(all_xs) - 20.0, min(all_ys) - 20.0, max(all_xs) + 20.0, max(all_ys) + 20.0)
+
         return RoutingResult(
             module_name=self.placement.module_name,
             net_routes=net_routes,
@@ -197,7 +232,7 @@ class OrthogonalRouter:
             decoupled_hfn_count=decoupled_count,
             regular_routed_count=len(regular_nets),
             is_strictly_orthogonal=is_strictly_orthogonal,
-            bbox=self.placement.bbox,
+            bbox=routing_bbox,
             elapsed_seconds=t1 - t0,
         )
 
@@ -214,30 +249,35 @@ class OrthogonalRouter:
         src_node = self.graph.nodes[p_src.node_id]
         r_src = src_node.rank
 
-        # Main channel for the driver
-        c_main = max(0, min(r_src, num_ranks - 2)) if num_ranks > 1 else 0
-        track_id = self._channel_track_alloc[c_main].get(net_name, 0)
-        x_trunk = self._get_channel_track_x(c_main, track_id)
+        # Main vertical channel for the driver
+        if r_src >= num_ranks - 1:
+            # Driver is in the last rank: trunk must be in the right perimeter channel!
+            x_trunk = self._right_perimeter_x + self._corridor_offset
+            track_id = 0
+        else:
+            c_main = max(0, min(r_src, num_ranks - 2)) if num_ranks > 1 else 0
+            track_id = self._channel_track_alloc[c_main].get(net_name, 0)
+            x_trunk = self._get_channel_track_x(c_main, track_id)
 
-        # Optimization: Fanout = 1, single horizontal straight line
+        # Optimization: Fanout = 1, single horizontal straight line without collisions
         if len(p_dsts) == 1 and abs(p_src.y - p_dsts[0].y) < 1e-3 and p_dsts[0].x > p_src.x:
             dst_pin = p_dsts[0]
             if dst_pin.direction == PinExitDirection.WEST:
-                # Direct straight horizontal line from driver to sink
-                seg = WireSegment(
-                    p1=Point(p_src.x, p_src.y),
-                    p2=Point(dst_pin.x, dst_pin.y),
-                    net_name=net_name,
-                    orientation=SegmentOrientation.HORIZONTAL,
-                )
-                return NetRoute(
-                    net_name=net_name,
-                    segments=[seg],
-                    solder_dots=[],
-                    is_decoupled_hfn=False,
-                    driver_pin=p_src,
-                    sink_pins=p_dsts,
-                )
+                if not self._check_horizontal_collision(p_src.x, dst_pin.x, p_src.y):
+                    seg = WireSegment(
+                        p1=Point(p_src.x, p_src.y),
+                        p2=Point(dst_pin.x, dst_pin.y),
+                        net_name=net_name,
+                        orientation=SegmentOrientation.HORIZONTAL,
+                    )
+                    return NetRoute(
+                        net_name=net_name,
+                        segments=[seg],
+                        solder_dots=[],
+                        is_decoupled_hfn=False,
+                        driver_pin=p_src,
+                        sink_pins=p_dsts,
+                    )
 
         # 1. Driver pin exit lead: must emerge horizontally to the East (or perpendicularly)
         if abs(p_src.x - x_trunk) > 1e-3:
@@ -252,15 +292,19 @@ class OrthogonalRouter:
 
         # Group sinks into forward, skip-rank, and feedback
         trunk_y_points: List[float] = [p_src.y]
+        corridor_offset = self._corridor_offset
+        self._corridor_offset = (self._corridor_offset + 6.0) % 40.0
 
         for pd in p_dsts:
             dst_node = self.graph.nodes[pd.node_id]
             r_dst = dst_node.rank
 
             if r_dst <= r_src or pd.x <= x_trunk:
-                # Feedback / backward routing via top perimeter corridor
-                y_feed = self.top_corridor_y
-                # Up from driver trunk to top corridor
+                # FEEDBACK / SAME-COLUMN ROUTE via Top Corridor
+                y_feed = self._top_corridor_base - corridor_offset
+                trunk_y_points.append(y_feed)
+
+                # Up in c_main to top corridor
                 segments.append(
                     WireSegment(
                         p1=Point(x_trunk, p_src.y),
@@ -269,66 +313,44 @@ class OrthogonalRouter:
                         orientation=SegmentOrientation.VERTICAL,
                     )
                 )
-                # Left along top corridor to sink X
-                x_sink_lead = pd.x - 15.0 if pd.direction == PinExitDirection.WEST else pd.x
+
+                # Drop channel
+                if r_dst == 0:
+                    x_drop = self._left_perimeter_x - corridor_offset
+                else:
+                    c_drop = max(0, min(r_dst - 1, num_ranks - 2))
+                    drop_track = self._channel_track_alloc[c_drop].get(net_name, 0)
+                    x_drop = self._get_channel_track_x(c_drop, drop_track)
+
+                # Horizontal along top corridor
                 segments.append(
                     WireSegment(
                         p1=Point(x_trunk, y_feed),
-                        p2=Point(x_sink_lead, y_feed),
+                        p2=Point(x_drop, y_feed),
                         net_name=net_name,
                         orientation=SegmentOrientation.HORIZONTAL,
                     )
                 )
-                # Down from top corridor to sink Y
-                segments.append(
-                    WireSegment(
-                        p1=Point(x_sink_lead, y_feed),
-                        p2=Point(x_sink_lead, pd.y),
-                        net_name=net_name,
-                        orientation=SegmentOrientation.VERTICAL,
-                    )
-                )
-                # Into sink pin
-                if abs(x_sink_lead - pd.x) > 1e-3:
-                    segments.append(
-                        WireSegment(
-                            p1=Point(x_sink_lead, pd.y),
-                            p2=Point(pd.x, pd.y),
-                            net_name=net_name,
-                            orientation=SegmentOrientation.HORIZONTAL,
-                        )
-                    )
-                continue
 
-            # Forward sinks:
-            if r_dst == r_src + 1 or abs(pd.x - x_trunk) <= 150.0:
-                # Direct connection from main vertical trunk
-                trunk_y_points.append(pd.y)
-
-                if pd.direction == PinExitDirection.WEST:
-                    # Enters into West pin horizontally
-                    segments.append(
-                        WireSegment(
-                            p1=Point(x_trunk, pd.y),
-                            p2=Point(pd.x, pd.y),
-                            net_name=net_name,
-                            orientation=SegmentOrientation.HORIZONTAL,
-                        )
-                    )
-                elif pd.direction == PinExitDirection.SOUTH:
-                    # Enters into South pin vertically from below
+                # Drop down in drop channel
+                if pd.direction == PinExitDirection.SOUTH:
                     y_dogleg = pd.y + 16.0
-                    trunk_y_points.append(y_dogleg)
-                    # Horizontal from trunk to under the pin
                     segments.append(
                         WireSegment(
-                            p1=Point(x_trunk, y_dogleg),
+                            p1=Point(x_drop, y_feed),
+                            p2=Point(x_drop, y_dogleg),
+                            net_name=net_name,
+                            orientation=SegmentOrientation.VERTICAL,
+                        )
+                    )
+                    segments.append(
+                        WireSegment(
+                            p1=Point(x_drop, y_dogleg),
                             p2=Point(pd.x, y_dogleg),
                             net_name=net_name,
                             orientation=SegmentOrientation.HORIZONTAL,
                         )
                     )
-                    # Vertical up into the South pin
                     segments.append(
                         WireSegment(
                             p1=Point(pd.x, y_dogleg),
@@ -338,7 +360,46 @@ class OrthogonalRouter:
                         )
                     )
                 else:
-                    # Generic entry
+                    segments.append(
+                        WireSegment(
+                            p1=Point(x_drop, y_feed),
+                            p2=Point(x_drop, pd.y),
+                            net_name=net_name,
+                            orientation=SegmentOrientation.VERTICAL,
+                        )
+                    )
+                    segments.append(
+                        WireSegment(
+                            p1=Point(x_drop, pd.y),
+                            p2=Point(pd.x, pd.y),
+                            net_name=net_name,
+                            orientation=SegmentOrientation.HORIZONTAL,
+                        )
+                    )
+
+            elif r_dst == r_src + 1:
+                # DIRECT ADJACENT COLUMN ROUTE
+                trunk_y_points.append(pd.y)
+                if pd.direction == PinExitDirection.SOUTH:
+                    y_dogleg = pd.y + 16.0
+                    trunk_y_points.append(y_dogleg)
+                    segments.append(
+                        WireSegment(
+                            p1=Point(x_trunk, y_dogleg),
+                            p2=Point(pd.x, y_dogleg),
+                            net_name=net_name,
+                            orientation=SegmentOrientation.HORIZONTAL,
+                        )
+                    )
+                    segments.append(
+                        WireSegment(
+                            p1=Point(pd.x, y_dogleg),
+                            p2=Point(pd.x, pd.y),
+                            net_name=net_name,
+                            orientation=SegmentOrientation.VERTICAL,
+                        )
+                    )
+                else:
                     segments.append(
                         WireSegment(
                             p1=Point(x_trunk, pd.y),
@@ -349,56 +410,183 @@ class OrthogonalRouter:
                     )
 
             else:
-                # Skip-rank forward net (r_dst > r_src + 1)
-                # Bridge across intermediate columns to destination channel
+                # SKIP-RANK FORWARD ROUTE (r_dst > r_src + 1)
                 c_dest = max(0, min(r_dst - 1, num_ranks - 2))
-                x_dest_trunk = self._get_channel_track_x(c_dest, track_id)
+                dest_track = self._channel_track_alloc[c_dest].get(net_name, 0)
+                x_dest_trunk = self._get_channel_track_x(c_dest, dest_track)
 
-                y_bridge = p_src.y
-                trunk_y_points.append(y_bridge)
+                # Check collision for straight bridge at p_src.y or target y
+                dst_target_y = pd.y + 16.0 if pd.direction == PinExitDirection.SOUTH else pd.y
+                has_coll_src = self._check_horizontal_collision(x_trunk, x_dest_trunk, p_src.y)
+                has_coll_dst = self._check_horizontal_collision(x_trunk, x_dest_trunk, dst_target_y)
 
-                # Horizontal bridge from main trunk to dest trunk
-                segments.append(
-                    WireSegment(
-                        p1=Point(x_trunk, y_bridge),
-                        p2=Point(x_dest_trunk, y_bridge),
-                        net_name=net_name,
-                        orientation=SegmentOrientation.HORIZONTAL,
-                    )
-                )
-
-                # Vertical segment in dest channel to sink Y
-                if abs(y_bridge - pd.y) > 1e-3:
+                if not has_coll_src:
+                    y_bridge = p_src.y
+                    trunk_y_points.append(y_bridge)
                     segments.append(
                         WireSegment(
-                            p1=Point(x_dest_trunk, y_bridge),
-                            p2=Point(x_dest_trunk, pd.y),
-                            net_name=net_name,
-                            orientation=SegmentOrientation.VERTICAL,
-                        )
-                    )
-
-                # Lead from dest trunk into sink pin
-                if pd.direction == PinExitDirection.SOUTH:
-                    y_dogleg = pd.y + 16.0
-                    segments.append(
-                        WireSegment(
-                            p1=Point(x_dest_trunk, y_dogleg),
-                            p2=Point(pd.x, y_dogleg),
+                            p1=Point(x_trunk, y_bridge),
+                            p2=Point(x_dest_trunk, y_bridge),
                             net_name=net_name,
                             orientation=SegmentOrientation.HORIZONTAL,
                         )
                     )
+                    # Down/up to target y in c_dest
+                    if pd.direction == PinExitDirection.SOUTH:
+                        y_dogleg = pd.y + 16.0
+                        segments.append(
+                            WireSegment(
+                                p1=Point(x_dest_trunk, y_bridge),
+                                p2=Point(x_dest_trunk, y_dogleg),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.VERTICAL,
+                            )
+                        )
+                        segments.append(
+                            WireSegment(
+                                p1=Point(x_dest_trunk, y_dogleg),
+                                p2=Point(pd.x, y_dogleg),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.HORIZONTAL,
+                            )
+                        )
+                        segments.append(
+                            WireSegment(
+                                p1=Point(pd.x, y_dogleg),
+                                p2=Point(pd.x, pd.y),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.VERTICAL,
+                            )
+                        )
+                    else:
+                        segments.append(
+                            WireSegment(
+                                p1=Point(x_dest_trunk, y_bridge),
+                                p2=Point(x_dest_trunk, pd.y),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.VERTICAL,
+                            )
+                        )
+                        segments.append(
+                            WireSegment(
+                                p1=Point(x_dest_trunk, pd.y),
+                                p2=Point(pd.x, pd.y),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.HORIZONTAL,
+                            )
+                        )
+
+                elif not has_coll_dst:
+                    y_bridge = dst_target_y
+                    trunk_y_points.append(y_bridge)
                     segments.append(
                         WireSegment(
-                            p1=Point(pd.x, y_dogleg),
-                            p2=Point(pd.x, pd.y),
+                            p1=Point(x_trunk, y_bridge),
+                            p2=Point(x_dest_trunk, y_bridge),
+                            net_name=net_name,
+                            orientation=SegmentOrientation.HORIZONTAL,
+                        )
+                    )
+                    if pd.direction == PinExitDirection.SOUTH:
+                        y_dogleg = pd.y + 16.0
+                        if abs(y_bridge - y_dogleg) > 1e-3:
+                            segments.append(
+                                WireSegment(
+                                    p1=Point(x_dest_trunk, y_bridge),
+                                    p2=Point(x_dest_trunk, y_dogleg),
+                                    net_name=net_name,
+                                    orientation=SegmentOrientation.VERTICAL,
+                                )
+                            )
+                        segments.append(
+                            WireSegment(
+                                p1=Point(x_dest_trunk, y_dogleg),
+                                p2=Point(pd.x, y_dogleg),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.HORIZONTAL,
+                            )
+                        )
+                        segments.append(
+                            WireSegment(
+                                p1=Point(pd.x, y_dogleg),
+                                p2=Point(pd.x, pd.y),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.VERTICAL,
+                            )
+                        )
+                    else:
+                        segments.append(
+                            WireSegment(
+                                p1=Point(x_dest_trunk, pd.y),
+                                p2=Point(pd.x, pd.y),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.HORIZONTAL,
+                            )
+                        )
+
+                else:
+                    # BOTH OBSTRUCTED: Route via Perimeter Corridor!
+                    mid_y = (self._min_y + self._max_y) / 2.0
+                    if p_src.y < mid_y:
+                        y_corr = self._top_corridor_base - corridor_offset
+                    else:
+                        y_corr = self._bottom_corridor_base + corridor_offset
+
+                    trunk_y_points.append(y_corr)
+                    # Up/down in c_main to corridor
+                    segments.append(
+                        WireSegment(
+                            p1=Point(x_trunk, p_src.y),
+                            p2=Point(x_trunk, y_corr),
                             net_name=net_name,
                             orientation=SegmentOrientation.VERTICAL,
                         )
                     )
-                else:
-                    if abs(x_dest_trunk - pd.x) > 1e-3:
+                    # Horizontal along corridor across intermediate ranks
+                    segments.append(
+                        WireSegment(
+                            p1=Point(x_trunk, y_corr),
+                            p2=Point(x_dest_trunk, y_corr),
+                            net_name=net_name,
+                            orientation=SegmentOrientation.HORIZONTAL,
+                        )
+                    )
+                    # Down/up in c_dest from corridor to sink
+                    if pd.direction == PinExitDirection.SOUTH:
+                        y_dogleg = pd.y + 16.0
+                        segments.append(
+                            WireSegment(
+                                p1=Point(x_dest_trunk, y_corr),
+                                p2=Point(x_dest_trunk, y_dogleg),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.VERTICAL,
+                            )
+                        )
+                        segments.append(
+                            WireSegment(
+                                p1=Point(x_dest_trunk, y_dogleg),
+                                p2=Point(pd.x, y_dogleg),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.HORIZONTAL,
+                            )
+                        )
+                        segments.append(
+                            WireSegment(
+                                p1=Point(pd.x, y_dogleg),
+                                p2=Point(pd.x, pd.y),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.VERTICAL,
+                            )
+                        )
+                    else:
+                        segments.append(
+                            WireSegment(
+                                p1=Point(x_dest_trunk, y_corr),
+                                p2=Point(x_dest_trunk, pd.y),
+                                net_name=net_name,
+                                orientation=SegmentOrientation.VERTICAL,
+                            )
+                        )
                         segments.append(
                             WireSegment(
                                 p1=Point(x_dest_trunk, pd.y),
@@ -418,11 +606,11 @@ class OrthogonalRouter:
                     p2=Point(x_trunk, y_max),
                     net_name=net_name,
                     orientation=SegmentOrientation.VERTICAL,
-                    track_id=track_id,
+                    track_id=track_id if r_src < num_ranks - 1 else 0,
                 )
             )
 
-        # 3. Detect 3-way/4-way junctions and insert solder dots (•)
+        # 3. Detect 3-way/4-way junctions and insert solder dots
         solder_dots = self.solder_manager.detect_junctions(segments, net_name) if len(p_dsts) > 1 else []
 
         return NetRoute(

@@ -159,3 +159,43 @@ def test_complex_aes_routing_scale_and_orthogonality():
         dx = abs(seg.p1.x - seg.p2.x)
         dy = abs(seg.p1.y - seg.p2.y)
         assert dx < 1e-4 or dy < 1e-4, f"Diagonal segment in net {seg.net_name}: {seg.p1} -> {seg.p2}"
+
+
+def test_zero_wire_instance_collisions():
+    """
+    Asserts that wires never collide with or cross above any instance body
+    across all levels of hierarchy (top module, controller, key schedule).
+    """
+    netlist_path = Path("benchmarks/synth/aes_cipher_top.v")
+    if not netlist_path.is_file():
+        pytest.skip("AES benchmark netlist not found")
+
+    lib_path = find_default_liberty()
+    lib = parse_liberty_file(lib_path)
+    netlist = parse_netlist_file(netlist_path, liberty=lib)
+
+    for mod_name in ["aes_cipher_top", "aes_controller", "aes_key_schedule"]:
+        module = netlist[mod_name]
+        placement = run_placement(module)
+        routing = route_placement(placement, hfn_threshold=20)
+
+        collisions = 0
+        collision_details = []
+        for net_name, route in routing.net_routes.items():
+            for seg in route.segments:
+                sx1, sx2 = min(seg.p1.x, seg.p2.x), max(seg.p1.x, seg.p2.x)
+                sy1, sy2 = min(seg.p1.y, seg.p2.y), max(seg.p1.y, seg.p2.y)
+                for nid, node in placement.graph.nodes.items():
+                    nx1, nx2 = node.x, node.x + node.width
+                    ny1, ny2 = node.y, node.y + node.height
+                    if seg.orientation == SegmentOrientation.HORIZONTAL:
+                        if ny1 + 1.0 < seg.p1.y < ny2 - 1.0 and max(sx1, nx1) < min(sx2, nx2) - 1.0:
+                            collisions += 1
+                            collision_details.append(f"H-collision Net={net_name} on Node={nid}")
+                    elif seg.orientation == SegmentOrientation.VERTICAL:
+                        if nx1 + 1.0 < seg.p1.x < nx2 - 1.0 and max(sy1, ny1) < min(sy2, ny2) - 1.0:
+                            collisions += 1
+                            collision_details.append(f"V-collision Net={net_name} on Node={nid}")
+
+        assert collisions == 0, f"Module {mod_name} has {collisions} wire-instance collisions: {collision_details[:5]}"
+
