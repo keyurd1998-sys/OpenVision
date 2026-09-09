@@ -12,6 +12,37 @@ from openvision.ingestion.liberty_parser import parse_liberty_file, find_default
 from openvision.ingestion.netlist_parser import parse_netlist_file
 
 
+def _ensure_linux_desktop_entry() -> None:
+    """
+    Ensures a .desktop entry exists in ~/.local/share/applications/ so Linux desktop
+    environments (such as GNOME Shell and Wayland) display the custom OpenVision icon
+    in the dock and taskbar rather than the system fallback gear icon.
+    """
+    try:
+        if sys.platform != "linux":
+            return
+        apps_dir = Path.home() / ".local" / "share" / "applications"
+        apps_dir.mkdir(parents=True, exist_ok=True)
+        desktop_file = apps_dir / "openvision.desktop"
+        icon_path = Path(__file__).resolve().parent / "gui" / "logo" / "app_icon.png"
+
+        entry_content = f"""[Desktop Entry]
+Version=1.0
+Type=Application
+Name=OpenVision
+Comment=Universal Schematic Viewer for Technology-Mapped Netlists
+Exec={sys.executable} -m openvision.cli --gui %f
+Icon={icon_path}
+Terminal=false
+Categories=Development;Engineering;Electronics;
+StartupWMClass=openvision
+"""
+        if not desktop_file.is_file() or icon_path.as_posix() not in desktop_file.read_text():
+            desktop_file.write_text(entry_content)
+    except Exception:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="openvision",
@@ -218,10 +249,15 @@ def main():
         console.print(f"\n[bold green][SUCCESS] Exported module box image to:[/bold green] {out_path}")
 
     if args.gui:
+        _ensure_linux_desktop_entry()
         from PyQt6 import QtWidgets, QtGui
         from openvision.gui import SchematicWindow
 
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
+        app.setApplicationName("openvision")
+        app.setApplicationDisplayName("OpenVision")
+        app.setDesktopFileName("openvision.desktop")
+
         logo_dir = Path(__file__).resolve().parent / "gui" / "logo"
         for icon_name in ("app_icon.png", "logo for app.png", "logo.png"):
             icon_path = logo_dir / icon_name
