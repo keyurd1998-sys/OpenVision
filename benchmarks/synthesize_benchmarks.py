@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Automated Yosys synthesis script for OpenVision benchmark suite.
-Synthesizes 10 RTL benchmark designs and technology-maps them to SkyWater 130nm standard cells.
-Outputs synthesized structural Verilog netlists to benchmarks/synth/*.v.
+Synthesizes the complex 128-bit AES Encryption Engine (~10,000 instances)
+and technology-maps it to SkyWater 130nm standard cells.
+Outputs synthesized structural Verilog netlist to benchmarks/synth/aes_cipher_top.v.
 """
 
 import os
@@ -11,16 +12,7 @@ import subprocess
 from pathlib import Path
 
 BENCHMARKS = [
-    ("full_adder", "full_adder"),
-    ("priority_encoder_8to3", "priority_encoder_8to3"),
-    ("mux4to1", "mux4to1"),
-    ("alu_4bit", "alu_4bit"),
-    ("dff_sync_reset", "dff_sync_reset"),
-    ("up_down_counter_4bit", "up_down_counter_4bit"),
-    ("shift_register_8bit", "shift_register_8bit"),
-    ("fsm_traffic_light", "fsm_traffic_light"),
-    ("barrel_shifter_8bit", "barrel_shifter_8bit"),
-    ("fibonacci_generator", "fibonacci_generator"),
+    ("aes_cipher_top", "aes_cipher_top"),
 ]
 
 def find_sky130_lib() -> Path:
@@ -36,7 +28,7 @@ def find_sky130_lib() -> Path:
     raise FileNotFoundError(f"SkyWater 130nm Liberty file not found in candidates: {candidate_paths}")
 
 def synthesize_design(design_name: str, top_module: str, rtl_dir: Path, synth_dir: Path, lib_path: Path) -> Path:
-    """Synthesizes a single RTL benchmark into a structural Verilog netlist using Yosys."""
+    """Synthesizes an RTL benchmark into a structural Verilog netlist using Yosys."""
     rtl_file = rtl_dir / f"{design_name}.v"
     out_file = synth_dir / f"{design_name}.v"
 
@@ -49,6 +41,7 @@ def synthesize_design(design_name: str, top_module: str, rtl_dir: Path, synth_di
 read_verilog "{rtl_file.resolve()}"
 hierarchy -check -top {top_module}
 proc; opt; fsm; opt; memory; opt
+flatten
 techmap; opt
 dfflibmap -liberty "{lib_path.resolve()}"
 abc -liberty "{lib_path.resolve()}"

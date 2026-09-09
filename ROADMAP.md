@@ -101,20 +101,16 @@ Instead of hardcoding cell names, OpenVision parses the Boolean `function` in th
 
 ---
 
-## 5. Benchmark Suite: 10 RTL Designs & Automated Sky130 Synthesis
+## 5. Benchmark Suite: Complex RTL Design (~10,000 Instances) & Sky130 Synthesis
 
 Located in `benchmarks/rtl/` and synthesized to `benchmarks/synth/*.v`:
 
-1. **`full_adder.v`:** Basic combinational logic (XOR, AND, OR gates).
-2. **`priority_encoder_8to3.v`:** Cascaded combinational priority logic.
-3. **`mux4to1.v`:** Multiplexer tree and select-line decoding.
-4. **`alu_4bit.v`:** Arithmetic logic unit (ADD, SUB, AND, OR, XOR with zero/carry flags).
-5. **`dff_sync_reset.v`:** Sequential storage element with clock and reset.
-6. **`up_down_counter_4bit.v`:** Sequential feedback loop (registers feeding back into adder/subtractor logic).
-7. **`shift_register_8bit.v`:** Pure pipeline shift chain (tests horizontal register-to-register alignment).
-8. **`fsm_traffic_light.v`:** Finite State Machine (state registers + next-state logic + output decoding).
-9. **`barrel_shifter_8bit.v`:** Complex routing mesh with multi-stage multiplexers and high cross-wiring.
-10. **`fibonacci_generator.v`:** Dual-register arithmetic loop with comparator and control logic.
+1. **`aes_cipher_top.v`:** Full NIST 128-bit Advanced Encryption Standard (AES-128) Core:
+   * **Scale:** 9,169 technology-mapped standard cell instances (~10,000 instances).
+   * **Interconnect:** 8,447 declared internal wires, 9,430 connected nets.
+   * **Sequential Elements:** 530 flip-flops (`dfxtp_1`, `edfxtp_1`) with clock and reset distribution trees.
+   * **Combinational Logic:** 8,639 gates covering complex substitution boxes (S-boxes), key expansion scheduling, MixColumns Galois-field matrices, and AddRoundKey trees.
+   * **Diverse Standard Cells:** Evaluates 70+ distinct Sky130 cell types (OAI, AOI, NAND, NOR, XOR, XNOR, MUX, ISOBUF, INV, AND, OR, etc.).
 
 **Synthesis Recipe:**
 Automated via `synthesize_benchmarks.py` using **Yosys** targeting:
@@ -124,13 +120,13 @@ Automated via `synthesize_benchmarks.py` using **Yosys** targeting:
 
 ## 6. Implementation Milestones
 
-* **Milestone 1: Project Setup, 10 RTL Designs & Automated Synthesis**
+* **Milestone 1: Project Setup, Ingestion Engine & Complex Benchmark Synthesis**
   * Set up project structure & virtual environment in `/eda/OpenVision`.
-  * Write the 10 Verilog RTL benchmark designs in `benchmarks/rtl/`.
-  * Create the automated Yosys synthesis script to tech-map all 10 designs to Sky130 (`benchmarks/synth/*.v`).
+  * Create the complex Verilog RTL benchmark (`aes_cipher_top.v`) with ~10,000 instances.
+  * Create the automated Yosys synthesis script to tech-map to Sky130 (`benchmarks/synth/aes_cipher_top.v`).
   * Build `liberty_parser.py` and `symbol_classifier.py` (extracts cell pins, directions, and Boolean functions from `.lib`).
-  * Build `netlist_parser.py` (parses structural Verilog gate instantiations).
-  * Verify by parsing all 10 synthesized netlists and printing the recognized gate summary.
+  * Build `netlist_parser.py` (parses structural Verilog gate instantiations and builds connectivity graph).
+  * Verify by parsing the synthesized netlist and printing the recognized gate summary.
 
 * **Milestone 2: Sugiyama Layered Placement Engine**
   * Cycle breaking, topological leveling, and Barycentric crossing minimization.
