@@ -107,7 +107,7 @@ def main():
         print()
 
     if all_passed:
-        console.print(Panel("[bold green]All 10 benchmark netlists successfully parsed and verified![/bold green]", border_style="green"))
+        console.print(Panel("[bold green]Benchmark netlist successfully parsed and verified against Sky130 library![/bold green]", border_style="green"))
     else:
         console.print(Panel("[bold red]Milestone 1 verification encountered errors.[/bold red]", border_style="red"))
         sys.exit(1)
