@@ -319,3 +319,51 @@ def test_hierarchical_submodule_navigation(qapp):
     win.ascend_hierarchy()
     assert win.canvas.is_box_view
     assert not win._is_hierarchy_expanded
+
+
+def test_inverter_buffer_sizing_and_net_width(qapp):
+    """
+    Verifies that:
+    1. Inverters and buffers have compact symbol dimensions (56x34) compared to standard gates (80x50).
+    2. Default net line width is 1.0.
+    """
+    verilog = """
+    module inv_buf_demo (in1, out1, out2);
+        input in1;
+        output out1, out2;
+        wire n1;
+        sky130_fd_sc_hd__clkinv_1 u_inv (.A(in1), .Y(n1));
+        sky130_fd_sc_hd__buf_1 u_buf (.A(n1), .X(out1));
+        sky130_fd_sc_hd__nand2_1 u_nand (.A(in1), .B(n1), .Y(out2));
+    endmodule
+    """
+    netlist = parse_netlist_text(verilog)
+    top_mod = netlist.top_module
+    placement = run_placement(top_mod)
+    routing = route_placement(placement)
+
+    # 1. Inverter and buffer size verification
+    inv_node = placement.graph.get_node("inst:u_inv")
+    buf_node = placement.graph.get_node("inst:u_buf")
+    nand_node = placement.graph.get_node("inst:u_nand")
+
+    assert inv_node is not None
+    assert buf_node is not None
+    assert nand_node is not None
+
+    # Inverter/buffer must be 56x34
+    assert inv_node.width == 56.0 and inv_node.height == 34.0
+    assert buf_node.width == 56.0 and buf_node.height == 34.0
+    # Standard NAND gate must be 80x50
+    assert nand_node.width == 80.0 and nand_node.height == 50.0
+
+    # 2. Default net width verification
+    canvas = SchematicCanvas()
+    canvas.load_schematic(placement, routing)
+    wire_item = next(iter(next(iter(canvas._net_wire_items.values()))))
+    dummy_img = QtGui.QImage(100, 100, QtGui.QImage.Format.Format_ARGB32)
+    p = QtGui.QPainter(dummy_img)
+    opt = QtWidgets.QStyleOptionGraphicsItem()
+    wire_item.paint(p, opt)
+    assert p.pen().widthF() == 1.0, f"Expected default wire pen width 1.0, got {p.pen().widthF()}"
+    p.end()

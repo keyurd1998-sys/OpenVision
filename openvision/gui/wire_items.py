@@ -114,14 +114,20 @@ class WireGraphicsItem(QtWidgets.QGraphicsItem):
 
     def paint(self, painter: QPainter, option, widget=None):
         if self._is_highlighted:
-            pen = QPen(WirePalette.WIRE_HIGHLIGHT, 3.2)
+            pen = QPen(WirePalette.WIRE_HIGHLIGHT, 2.8)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         elif self._is_hovered:
-            pen = QPen(WirePalette.WIRE_HOVER, 2.6)
+            pen = QPen(WirePalette.WIRE_HOVER, 2.2)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         else:
-            pen = QPen(WirePalette.WIRE_NORMAL, 1.5)
+            pen = QPen(WirePalette.WIRE_NORMAL, 1.0)
+            pen.setCapStyle(Qt.PenCapStyle.SquareCap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
 
         p1 = QPointF(self.segment.p1.x, self.segment.p1.y)
@@ -286,11 +292,14 @@ class HFNStubGraphicsItem(QtWidgets.QGraphicsItem):
 
         # Draw stub wire segment
         if self._is_highlighted:
-            pen = QPen(WirePalette.WIRE_HIGHLIGHT, 3.0)
+            pen = QPen(WirePalette.WIRE_HIGHLIGHT, 2.8)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         elif self._is_hovered:
-            pen = QPen(WirePalette.WIRE_HOVER, 2.5)
+            pen = QPen(WirePalette.WIRE_HOVER, 2.2)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         else:
-            pen = QPen(WirePalette.HFN_STUB_WIRE, 1.5)
+            pen = QPen(WirePalette.HFN_STUB_WIRE, 1.0)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)

@@ -111,6 +111,9 @@ def build_placement_graph(module: NetlistModule, decouple_dff: bool = True) -> P
     for inst in module.instances.values():
         is_hier = (inst.classification and "Hierarchical Module" in inst.classification.description)
         is_dff = (inst.gate_type in (GateType.DFF, GateType.LATCH)) or any(k in inst.cell_type.lower() for k in ("dfx", "dff", "latch", "flop"))
+        is_inv_buf = (inst.gate_type in (GateType.INV, GateType.BUF)) or (
+            inst.gate_type == GateType.MACRO and any(k in inst.cell_type.lower() for k in ("__inv_", "__buf_", "__clkinv_", "__clkbuf_"))
+        )
         node_id = f"inst:{inst.name}"
         if is_hier:
             num_pins = max(len(inst.connections), 4)
@@ -121,6 +124,10 @@ def build_placement_graph(module: NetlistModule, decouple_dff: bool = True) -> P
             w = 100.0
             h = 70.0
             kind = "DFF"
+        elif is_inv_buf:
+            w = 56.0
+            h = 34.0
+            kind = "INSTANCE"
         else:
             w = 80.0
             h = 50.0

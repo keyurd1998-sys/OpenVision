@@ -55,8 +55,7 @@ class ModuleBoxGraphicsItem(QtWidgets.QGraphicsItem):
         self.setToolTip(
             f"Module: {module.name}\n"
             f"Instances: {len(module.instances):,} gates\n"
-            f"Ports: {len(module.ports)} primary I/O pins\n"
-            f"Action: Double-click to expand hierarchy"
+            f"Ports: {len(module.ports)} primary I/O pins"
         )
 
         self._is_hovered = False
@@ -87,11 +86,11 @@ class ModuleBoxGraphicsItem(QtWidgets.QGraphicsItem):
         self.pin_pitch = 30.0
         self.stub_length = 45.0
         self.header_height = 85.0
-        self.footer_height = 65.0
+        self.footer_height = 25.0
 
         max_pins = max(len(self.input_ports), len(self.output_ports), 1)
         self.pins_height = max_pins * self.pin_pitch
-        self.box_height = max(260.0, self.header_height + self.pins_height + self.footer_height)
+        self.box_height = max(180.0, self.header_height + self.pins_height + self.footer_height)
 
         # Determine width based on text lengths
         max_in_len = max([len(self._format_port_name(p)) for p in self.input_ports], default=6)
@@ -149,20 +148,14 @@ class ModuleBoxGraphicsItem(QtWidgets.QGraphicsItem):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
 
-        # 1. Outer Box Shadow
-        shadow_rect = QRectF(4.0, 4.0, self.box_width, self.box_height)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 90))
-        painter.drawRoundedRect(shadow_rect, 10.0, 10.0)
-
-        # 2. Main Box Body
+        # 1. Main Box Body
         box_rect = QRectF(0.0, 0.0, self.box_width, self.box_height)
         border_col = ModuleBoxPalette.BOX_BORDER_HOVER if self._is_hovered else ModuleBoxPalette.BOX_BORDER
-        pen_width = 3.0 if self._is_hovered else 2.0
+        pen_width = 2.4 if self._is_hovered else 1.8
 
         painter.setPen(QPen(border_col, pen_width))
         painter.setBrush(QBrush(ModuleBoxPalette.BOX_FILL))
-        painter.drawRoundedRect(box_rect, 8.0, 8.0)
+        painter.drawRoundedRect(box_rect, 6.0, 6.0)
 
         # 3. Header Bar Background
         header_path = QPainterPath()
@@ -294,31 +287,6 @@ class ModuleBoxGraphicsItem(QtWidgets.QGraphicsItem):
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 label_text,
             )
-
-        # 7. Call-to-action prompt at the bottom
-        prompt_w = min(280.0, self.box_width - 40.0)
-        prompt_rect = QRectF(
-            (self.box_width - prompt_w) / 2.0,
-            self.box_height - 48.0,
-            prompt_w,
-            32.0,
-        )
-
-        p_border = ModuleBoxPalette.BOX_BORDER_HOVER if self._is_hovered else ModuleBoxPalette.HINT_BOX_BORDER
-        p_text = ModuleBoxPalette.BOX_BORDER_HOVER if self._is_hovered else ModuleBoxPalette.HINT_TEXT
-
-        painter.setPen(QPen(p_border, 1.5))
-        painter.setBrush(QBrush(ModuleBoxPalette.HINT_BOX_FILL))
-        painter.drawRoundedRect(prompt_rect, 6.0, 6.0)
-
-        font_prompt = QFont("Monospace", 9, QFont.Weight.Bold)
-        painter.setFont(font_prompt)
-        painter.setPen(p_text)
-        painter.drawText(
-            prompt_rect,
-            Qt.AlignmentFlag.AlignCenter,
-            "[ Double-Click to Expand Hierarchy ]",
-        )
 
     # -------------------------------------------------------------------------
     # Event Handlers

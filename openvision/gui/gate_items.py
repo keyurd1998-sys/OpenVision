@@ -134,36 +134,30 @@ class GateGraphicsItem(QtWidgets.QGraphicsItem):
             inst_type = getattr(self.node.ref, "cell_type", "MODULE")
             painter.drawText(QRectF(6.0, 2.0, w - 12.0, 18.0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, f"[MODULE] {inst_type}")
 
-            # Center instance name
+            # Center instance name cleanly in the block
             painter.setPen(QPen(QColor("#FFFFFF")))
             font_name = QFont("monospace", 10, QFont.Weight.Bold)
             painter.setFont(font_name)
-            painter.drawText(QRectF(10.0, 24.0, w - 20.0, h - 48.0), Qt.AlignmentFlag.AlignCenter, self.node.name)
-
-            # Expand hint at bottom
-            painter.setPen(QPen(QColor("#7DD3FC") if self._is_hovered else QColor("#64748B")))
-            font_hint = QFont("monospace", 7)
-            painter.setFont(font_hint)
-            painter.drawText(QRectF(4.0, h - 20.0, w - 8.0, 16.0), Qt.AlignmentFlag.AlignCenter, "Double-Click to Expand")
+            painter.drawText(QRectF(10.0, 24.0, w - 20.0, h - 30.0), Qt.AlignmentFlag.AlignCenter, self.node.name)
             return
 
         # Pen & Brush selection
         if self.isSelected():
-            pen = QPen(Palette.GATE_BORDER_SELECTED, 2.5)
+            pen = QPen(Palette.GATE_BORDER_SELECTED, 2.4)
         elif self._is_hovered:
             pen = QPen(Palette.GATE_BORDER_HOVER, 2.0)
         else:
             if self.node.kind == "PRIMARY_INPUT":
-                pen = QPen(Palette.PORT_IN_BORDER, 1.5)
+                pen = QPen(Palette.PORT_IN_BORDER, 1.2)
             elif self.node.kind == "PRIMARY_OUTPUT":
-                pen = QPen(Palette.PORT_OUT_BORDER, 1.5)
+                pen = QPen(Palette.PORT_OUT_BORDER, 1.2)
             else:
-                pen = QPen(Palette.GATE_BORDER, 1.5)
+                pen = QPen(Palette.GATE_BORDER, 1.2)
 
         painter.setPen(pen)
 
         # LOD Optimization: When zoomed far out, draw simplified fast bounding box
-        if lod < 0.12:
+        if lod < 0.15:
             painter.setBrush(QBrush(Palette.GATE_FILL))
             painter.drawRect(QRectF(0, 0, w, h))
             return
@@ -213,20 +207,29 @@ class GateGraphicsItem(QtWidgets.QGraphicsItem):
     def _paint_labels(self, painter: QPainter, w: float, h: float, lod: float):
         """Draws instance name, cell type, and pin names."""
         painter.setPen(QPen(Palette.TEXT_PRIMARY))
-        font = QFont("monospace", 8)
-        painter.setFont(font)
 
-        # Main label (Instance Name or Port Name)
-        text_rect = QRectF(2.0, 2.0, w - 4.0, h - 4.0)
-        label_text = self.node.name
-        # Shorten very long instance names if needed
-        if len(label_text) > 12 and not self.node.is_port:
-            label_text = label_text[:11] + "…"
+        gate_type = getattr(self.node.ref, "gate_type", None) if self.node.ref else None
+        is_inv_buf = gate_type in (GateType.INV, GateType.BUF)
 
-        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+        if is_inv_buf:
+            font = QFont("monospace", 7)
+            painter.setFont(font)
+            text_rect = QRectF(1.0, 2.0, w * 0.65, h - 4.0)
+            label_text = self.node.name
+            if len(label_text) > 8:
+                label_text = label_text[:7] + "…"
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+        else:
+            font = QFont("monospace", 8)
+            painter.setFont(font)
+            text_rect = QRectF(2.0, 2.0, w - 4.0, h - 4.0)
+            label_text = self.node.name
+            if len(label_text) > 12 and not self.node.is_port:
+                label_text = label_text[:11] + "…"
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, label_text)
 
         # Cell type sub-label below center
-        if lod >= 0.45 and not self.node.is_port:
+        if lod >= 0.50 and not self.node.is_port and not is_inv_buf:
             cell_type = getattr(self.node.ref, "cell_type", "")
             if cell_type:
                 # Truncate prefix like sky130_fd_sc_hd__
@@ -252,7 +255,7 @@ class GateGraphicsItem(QtWidgets.QGraphicsItem):
 
         # Inverter or Buffer (Triangle)
         if gate_type in (GateType.INV, GateType.BUF):
-            r_b = 4.0 if gate_type == GateType.INV else 0.0
+            r_b = 3.0 if gate_type == GateType.INV else 0.0
             tip_x = w - r_b * 2.0
             path.moveTo(0, 0)
             path.lineTo(tip_x, h / 2.0)
@@ -346,9 +349,10 @@ class GateGraphicsItem(QtWidgets.QGraphicsItem):
         gate_type = getattr(self.node.ref, "gate_type", None) if self.node.ref else None
 
         if gate_type in (GateType.INV, GateType.NAND, GateType.NOR, GateType.XNOR):
-            # Output bubble at (w - r_b, h / 2)
+            # Output bubble at (w - r, h / 2)
+            r = 3.0 if gate_type == GateType.INV else r_b
             bp = QPainterPath()
-            bp.addEllipse(QPointF(w - r_b, h / 2.0), r_b, r_b)
+            bp.addEllipse(QPointF(w - r, h / 2.0), r, r)
             bubbles.append(bp)
 
         # Check instance bubble pins
