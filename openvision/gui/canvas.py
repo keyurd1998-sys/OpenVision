@@ -30,6 +30,7 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
 
     # Signals
     net_selected = pyqtSignal(str)          # Emits net name when selected
+    net_hovered = pyqtSignal(str)           # Emits net name when hovered (or "" when cleared)
     gate_selected = pyqtSignal(str)         # Emits node/instance name when selected
     module_expanded = pyqtSignal(object)    # Emits NetlistModule when double clicked
     submodule_activated = pyqtSignal(str, str) # Emits (instance_name, submodule_type) when submodule block is double clicked
@@ -72,6 +73,8 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
         self._is_box_view: bool = False
 
         self._current_highlighted_net: Optional[str] = None
+        self._current_hovered_net: Optional[str] = None
+        self._unhover_timer: Optional[QtCore.QTimer] = None
         self._placement_res: Optional[PlacementResult] = None
         self._routing_res: Optional[RoutingResult] = None
 
@@ -94,6 +97,9 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
         self._net_dot_items.clear()
         self._net_stub_items.clear()
         self._current_highlighted_net = None
+        self._current_hovered_net = None
+        if self._unhover_timer is not None and self._unhover_timer.isActive():
+            self._unhover_timer.stop()
         self._is_box_view = True
 
         from openvision.gui.module_box_item import ModuleBoxGraphicsItem
@@ -120,6 +126,9 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
         self._net_dot_items.clear()
         self._net_stub_items.clear()
         self._current_highlighted_net = None
+        self._current_hovered_net = None
+        if self._unhover_timer is not None and self._unhover_timer.isActive():
+            self._unhover_timer.stop()
         self._module_box_item = None
         self._is_box_view = False
 
@@ -141,11 +150,44 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
             dot_list: List[SolderDotGraphicsItem] = []
             stub_list: List[HFNStubGraphicsItem] = []
 
+            # Build detailed tooltip showing source to every destination
+            src_desc = f"{route.driver_pin.node_id}.{route.driver_pin.pin_name}" if route.driver_pin else "Primary Input"
+            if src_desc.startswith("inst:"):
+                src_desc = src_desc[5:]
+            elif src_desc.startswith("port_in:"):
+                src_desc = f"Port {src_desc[8:]}"
+
+            sink_descs = []
+            for sp in route.sink_pins:
+                d = f"{sp.node_id}.{sp.pin_name}"
+                if d.startswith("inst:"):
+                    d = d[5:]
+                elif d.startswith("port_out:"):
+                    d = f"Port {d[9:]}"
+                sink_descs.append(d)
+
+            if not sink_descs and route.hfn_stubs:
+                sink_descs = [f"HFN Stubs ({len(route.hfn_stubs)} pins)"]
+
+            if len(sink_descs) <= 5:
+                dst_summary = ", ".join(sink_descs) if sink_descs else "None"
+            else:
+                dst_summary = ", ".join(sink_descs[:4]) + f" ... (+{len(sink_descs)-4} more)"
+
+            tooltip_text = (
+                f"<b>Net:</b> {net_name}<br>"
+                f"<b>Source:</b> {src_desc}<br>"
+                f"<b>Destinations ({len(sink_descs)}):</b> {dst_summary}<br>"
+                f"<b>Wire Segments:</b> {len(route.segments)} | <b>Corners:</b> {route.num_bends}"
+            )
+
             # Wires
             for seg in route.segments:
                 w_item = WireGraphicsItem(
                     segment=seg,
                     on_net_selected=self.highlight_net,
+                    on_net_hovered=self.hover_net,
+                    tooltip=tooltip_text,
                 )
                 self._scene.addItem(w_item)
                 wire_list.append(w_item)
@@ -155,6 +197,8 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
                 d_item = SolderDotGraphicsItem(
                     dot=dot,
                     on_net_selected=self.highlight_net,
+                    on_net_hovered=self.hover_net,
+                    tooltip=tooltip_text,
                 )
                 self._scene.addItem(d_item)
                 dot_list.append(d_item)
@@ -164,6 +208,8 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
                 s_item = HFNStubGraphicsItem(
                     stub=stub,
                     on_net_selected=self.highlight_net,
+                    on_net_hovered=self.hover_net,
+                    tooltip=tooltip_text,
                 )
                 self._scene.addItem(s_item)
                 stub_list.append(s_item)
@@ -229,6 +275,56 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
                 s.set_highlighted(True)
 
             self.net_selected.emit(net_name)
+
+    def hover_net(self, net_name: Optional[str], state: bool = True) -> None:
+        """
+        Dynamically highlights or un-highlights an entire net (all wire segments,
+        solder dots, and HFN stubs from source to every destination) on cursor hover.
+        Includes debouncing to prevent visual flicker when the cursor traverses
+        orthogonal 90-degree corners or branch junctions between adjacent segments.
+        """
+        if state:
+            # Cancel any pending unhover timer
+            if self._unhover_timer is not None and self._unhover_timer.isActive():
+                self._unhover_timer.stop()
+
+            if self._current_hovered_net == net_name:
+                return
+
+            # If another net was previously hovered, un-hover it
+            if self._current_hovered_net and self._current_hovered_net != net_name:
+                self._set_net_hover_state(self._current_hovered_net, False)
+
+            self._current_hovered_net = net_name
+            if net_name:
+                self._set_net_hover_state(net_name, True)
+                self.net_hovered.emit(net_name)
+        else:
+            # Debounce cursor leaving a net briefly (30ms) before clearing.
+            # This allows moving across 90-degree corners to the next segment
+            # of the same net without momentary flicker.
+            if self._current_hovered_net == net_name:
+                if self._unhover_timer is None:
+                    self._unhover_timer = QtCore.QTimer(self)
+                    self._unhover_timer.setSingleShot(True)
+                    self._unhover_timer.timeout.connect(self._on_unhover_timeout)
+                self._unhover_timer.start(30)
+
+    def _on_unhover_timeout(self) -> None:
+        """Executed when cursor leaves a net and does not enter an adjacent segment."""
+        if self._current_hovered_net:
+            self._set_net_hover_state(self._current_hovered_net, False)
+            self._current_hovered_net = None
+            self.net_hovered.emit("")
+
+    def _set_net_hover_state(self, net_name: str, state: bool) -> None:
+        """Sets the hover state for all segments, solder dots, and stubs belonging to net_name."""
+        for w in self._net_wire_items.get(net_name, []):
+            w.set_hovered(state)
+        for d in self._net_dot_items.get(net_name, []):
+            d.set_hovered(state)
+        for s in self._net_stub_items.get(net_name, []):
+            s.set_hovered(state)
 
     def find_and_center_node(self, node_name: str) -> bool:
         """Searches for a gate or port by name, highlights it, and centers the view."""

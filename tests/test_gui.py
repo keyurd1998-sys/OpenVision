@@ -99,6 +99,92 @@ def test_net_highlighting_interaction(qapp, small_design):
         assert not w._is_highlighted, "Wire was not un-highlighted"
 
 
+def test_full_net_hover_highlighting(qapp, small_design):
+    """
+    Verifies that hovering over any segment of a net highlights the ENTIRE net
+    across all segments, corners/bends, solder dots, and stubs from source to all destinations.
+    Also verifies debouncing across corners and status bar integration.
+    """
+    placement, routing = small_design
+    win = SchematicWindow()
+    win._routing_res = routing
+    win.canvas.load_schematic(placement, routing)
+    canvas = win.canvas
+
+    # Find a net with multiple segments (e.g. fanout > 1)
+    multi_seg_net = None
+    for net_name, wires in canvas._net_wire_items.items():
+        if len(wires) >= 2:
+            multi_seg_net = net_name
+            break
+
+    assert multi_seg_net is not None, "Did not find a multi-segment net in small_design"
+    wires = canvas._net_wire_items[multi_seg_net]
+    assert len(wires) >= 2
+
+    # Verify initial state: no segments hovered
+    for w in wires:
+        assert not w._is_hovered
+        assert w.zValue() == 0.0
+
+    # 1. Hover entered on one segment
+    canvas.hover_net(multi_seg_net, True)
+    for w in wires:
+        assert w._is_hovered, f"Segment in net {multi_seg_net} should be hovered"
+        assert w.zValue() == 10.0, "Hovered wire should have elevated zValue"
+
+    for dot in canvas._net_dot_items.get(multi_seg_net, []):
+        assert dot._is_hovered
+        assert dot.zValue() == 12.0
+
+    assert win.canvas._current_hovered_net == multi_seg_net
+    assert multi_seg_net in win.status_mid.text()
+    assert "Source:" in win.status_mid.text()
+
+    # 2. Simulate crossing a 90-degree corner:
+    # hoverLeave on seg 1, followed immediately by hoverEnter on seg 2 of same net
+    canvas.hover_net(multi_seg_net, False)
+    # Debounce timer should be running, net still hovered
+    assert canvas._unhover_timer is not None
+    assert canvas._unhover_timer.isActive()
+    assert canvas._current_hovered_net == multi_seg_net
+    for w in wires:
+        assert w._is_hovered
+
+    # Enter seg 2 of same net before timer expires
+    canvas.hover_net(multi_seg_net, True)
+    assert not canvas._unhover_timer.isActive()
+    for w in wires:
+        assert w._is_hovered
+
+    # 3. Leave net completely and wait for debounce timer
+    canvas.hover_net(multi_seg_net, False)
+    assert canvas._unhover_timer.isActive()
+    # Trigger timeout directly
+    canvas._on_unhover_timeout()
+    assert canvas._current_hovered_net is None
+    for w in wires:
+        assert not w._is_hovered
+        assert w.zValue() == 0.0
+
+    # 4. Click to select (pin) net, then hover and unhover
+    canvas.highlight_net(multi_seg_net)
+    for w in wires:
+        assert w._is_highlighted
+
+    canvas.hover_net(multi_seg_net, True)
+    for w in wires:
+        assert w._is_hovered
+        assert w._is_highlighted
+
+    canvas._on_unhover_timeout()
+    # Pinned highlight should remain intact after unhover
+    for w in wires:
+        assert not w._is_hovered
+        assert w._is_highlighted
+
+
+
 def test_search_and_center_navigation(qapp, small_design):
     """Verifies search navigation can locate gates and nets."""
     placement, routing = small_design

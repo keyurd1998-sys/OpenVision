@@ -154,6 +154,15 @@ def main():
     assert all(not w._is_highlighted for w in canvas._net_wire_items[sample_net]), "Deselect net failed"
     console.print(f"  [bold green][PASS][/bold green] Interactive Net Highlighting: Highlighted all branches and solder dots for net '{sample_net}' on click.")
 
+    # Constraint 3b: Full-Net Hover Highlighting across corners and fanouts
+    canvas.hover_net(sample_net, True)
+    hovered_wires = [w for w in canvas._net_wire_items[sample_net] if w._is_hovered]
+    assert len(hovered_wires) == len(canvas._net_wire_items[sample_net]), "Full-net hover highlighting failed"
+    canvas.hover_net(sample_net, False)
+    canvas._on_unhover_timeout()
+    assert all(not w._is_hovered for w in canvas._net_wire_items[sample_net]), "Full-net hover de-highlighting failed"
+    console.print(f"  [bold green][PASS][/bold green] Full-Net Hover Highlighting: Hovering highlighted all {len(hovered_wires)} segments across corners from source to destinations.")
+
     # Constraint 4: Search Navigation
     sample_gate_id = next(k for k in canvas._gate_items.keys() if k.startswith("inst:"))
     found_gate = canvas.find_and_center_node(sample_gate_id)

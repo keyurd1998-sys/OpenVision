@@ -148,6 +148,7 @@ class SchematicWindow(QtWidgets.QMainWindow):
         # Connect canvas signals
         self.canvas.cursor_moved.connect(self._on_cursor_moved)
         self.canvas.net_selected.connect(self._on_net_selected)
+        self.canvas.net_hovered.connect(self._on_net_hovered)
         self.canvas.gate_selected.connect(self._on_gate_selected)
         self.canvas.module_expanded.connect(self.expand_hierarchy)
         self.canvas.submodule_activated.connect(self.descend_into_submodule)
@@ -637,9 +638,62 @@ class SchematicWindow(QtWidgets.QMainWindow):
     def _on_cursor_moved(self, x: float, y: float):
         self.status_coords.setText(f"X: {x:8.1f}, Y: {y:8.1f}")
 
+    def _on_net_hovered(self, net_name: str):
+        if not net_name:
+            if not self.canvas._current_highlighted_net:
+                self.status_mid.setText("Ready")
+            return
+        if self._routing_res and net_name in self._routing_res.net_routes:
+            route = self._routing_res.net_routes[net_name]
+            src = f"{route.driver_pin.node_id}.{route.driver_pin.pin_name}" if route.driver_pin else "Primary Input"
+            if src.startswith("inst:"):
+                src = src[5:]
+            elif src.startswith("port_in:"):
+                src = f"Port {src[8:]}"
+            sinks = []
+            for sp in route.sink_pins:
+                d = f"{sp.node_id}.{sp.pin_name}"
+                if d.startswith("inst:"):
+                    d = d[5:]
+                elif d.startswith("port_out:"):
+                    d = f"Port {d[9:]}"
+                sinks.append(d)
+            if not sinks and route.hfn_stubs:
+                sinks = [f"HFN Stubs ({len(route.hfn_stubs)})"]
+            sink_str = ", ".join(sinks[:3]) + (f" (+{len(sinks)-3} more)" if len(sinks) > 3 else "")
+            self.status_mid.setText(
+                f"Net: {net_name} | Source: {src} -> Dst: {sink_str} | Fanout: {route.fanout} | Segments: {len(route.segments)}"
+            )
+        else:
+            self.status_mid.setText(f"Net: {net_name}")
+
     def _on_net_selected(self, net_name: str):
-        fo = self._routing_res.net_routes[net_name].fanout if self._routing_res and net_name in self._routing_res.net_routes else 0
-        self.status_mid.setText(f"Selected Net: [bold]{net_name}[/bold] (fanout={fo})")
+        if not net_name:
+            self.status_mid.setText("Ready")
+            return
+        if self._routing_res and net_name in self._routing_res.net_routes:
+            route = self._routing_res.net_routes[net_name]
+            src = f"{route.driver_pin.node_id}.{route.driver_pin.pin_name}" if route.driver_pin else "Primary Input"
+            if src.startswith("inst:"):
+                src = src[5:]
+            elif src.startswith("port_in:"):
+                src = f"Port {src[8:]}"
+            sinks = []
+            for sp in route.sink_pins:
+                d = f"{sp.node_id}.{sp.pin_name}"
+                if d.startswith("inst:"):
+                    d = d[5:]
+                elif d.startswith("port_out:"):
+                    d = f"Port {d[9:]}"
+                sinks.append(d)
+            if not sinks and route.hfn_stubs:
+                sinks = [f"HFN Stubs ({len(route.hfn_stubs)})"]
+            sink_str = ", ".join(sinks[:3]) + (f" (+{len(sinks)-3} more)" if len(sinks) > 3 else "")
+            self.status_mid.setText(
+                f"Pinned Net: {net_name} | Source: {src} -> Dst: {sink_str} | Fanout: {route.fanout} | Segments: {len(route.segments)}"
+            )
+        else:
+            self.status_mid.setText(f"Pinned Net: {net_name}")
 
     def _on_gate_selected(self, gate_name: str):
         self._selected_node_name = gate_name
