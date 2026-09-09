@@ -35,6 +35,11 @@ def main():
         help="Print text summary of recognized gate types and connectivity statistics.",
     )
     parser.add_argument(
+        "--place", "-p",
+        action="store_true",
+        help="Execute Sugiyama layered placement and report placement layout statistics.",
+    )
+    parser.add_argument(
         "--version", "-v",
         action="version",
         version=f"OpenVision v{__version__}",
@@ -74,6 +79,12 @@ def main():
         sys.exit(1)
 
     top_mod.print_summary()
+
+    if args.place:
+        from openvision.placement import run_placement
+        console.print("\n[bold cyan]Running Sugiyama Placement Engine...[/bold cyan]")
+        placement_res = run_placement(top_mod)
+        placement_res.print_summary()
 
 
 if __name__ == "__main__":

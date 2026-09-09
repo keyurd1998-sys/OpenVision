@@ -15,6 +15,10 @@ from openvision.ingestion import (
     NetlistModule,
     parse_netlist_file,
 )
+from openvision.placement import (
+    PlacementResult,
+    run_placement,
+)
 
 __all__ = [
     "__version__",
@@ -27,4 +31,6 @@ __all__ = [
     "Netlist",
     "NetlistModule",
     "parse_netlist_file",
+    "PlacementResult",
+    "run_placement",
 ]
