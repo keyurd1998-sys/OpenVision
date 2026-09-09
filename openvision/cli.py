@@ -86,6 +86,17 @@ def main():
         help="Export isolated logic cone sub-schematic to PNG image.",
     )
     parser.add_argument(
+        "--export-box",
+        type=str,
+        default=None,
+        help="Export top-level module box with IO pins to high-resolution PNG image on disk.",
+    )
+    parser.add_argument(
+        "--expanded",
+        action="store_true",
+        help="Start GUI viewer with hierarchy already expanded into gate-level schematic.",
+    )
+    parser.add_argument(
         "--version", "-v",
         action="version",
         version=f"OpenVision v{__version__}",
@@ -192,16 +203,32 @@ def main():
         out_path = export_scene_to_image(canvas._scene, args.export_cone)
         console.print(f"\n[bold green][SUCCESS] Exported isolated cone schematic to:[/bold green] {out_path}")
 
+    if args.export_box:
+        import os
+        from PyQt6 import QtWidgets
+        from openvision.gui import SchematicCanvas, export_scene_to_image
+
+        if "DISPLAY" not in os.environ and "QT_QPA_PLATFORM" not in os.environ:
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        canvas = SchematicCanvas()
+        canvas.load_module_box(top_mod)
+        out_path = export_scene_to_image(canvas._scene, args.export_box)
+        console.print(f"\n[bold green][SUCCESS] Exported module box image to:[/bold green] {out_path}")
+
     if args.gui:
         from PyQt6 import QtWidgets
         from openvision.gui import SchematicWindow
 
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
         win = SchematicWindow()
-        win.display_design(top_mod, placement_res, routing_res)
+        win.display_design(top_mod, placement_res, routing_res, start_expanded=args.expanded)
         if args.fanin:
+            win.expand_hierarchy()
             win.trace_node_fanin(args.fanin, depth=args.depth)
         elif args.fanout:
+            win.expand_hierarchy()
             win.trace_node_fanout(args.fanout, depth=args.depth)
         win.show()
         sys.exit(app.exec())

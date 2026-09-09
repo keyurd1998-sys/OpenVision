@@ -135,6 +135,7 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self._full_routing_res: Optional[RoutingResult] = None
         self._current_cone = None
         self._selected_node_name: Optional[str] = None
+        self._is_hierarchy_expanded: bool = False
 
         # 1. Central Canvas Widget
         self.canvas = SchematicCanvas(self)
@@ -144,6 +145,7 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self.canvas.cursor_moved.connect(self._on_cursor_moved)
         self.canvas.net_selected.connect(self._on_net_selected)
         self.canvas.gate_selected.connect(self._on_gate_selected)
+        self.canvas.module_expanded.connect(self.expand_hierarchy)
 
         # 2. UI Components
         self._create_actions()
@@ -195,46 +197,77 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self._full_placement_res = self._placement_res
         self._full_routing_res = self._routing_res
 
-        # Populate Canvas
-        self.status_left.setText("Populating canvas graphics items...")
-        QtWidgets.QApplication.processEvents()
-        self.canvas.load_schematic(self._placement_res, self._routing_res)
-
         # Populate Hierarchy Browser
         self._populate_hierarchy_tree(top_mod)
 
         # Update Window Title and Status
         self.setWindowTitle(f"OpenVision - [{top_mod.name}] ({len(top_mod.instances):,} gates) - {self._netlist_file.name}")
-        self.status_left.setText(
-            f"Design: {top_mod.name} | "
-            f"Gates: {len(top_mod.instances):,} | "
-            f"Nets: {len(self._routing_res.net_routes):,} | "
-            f"Columns: {self._placement_res.num_ranks}"
-        )
-        QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
+        self.show_module_box()
 
     def display_design(
         self,
         module,
         placement_res: PlacementResult,
         routing_res: RoutingResult,
+        start_expanded: bool = False,
     ) -> None:
-        """Displays pre-computed placement and routing results without re-computing."""
+        """Displays pre-computed placement and routing results. Opens in module box by default."""
         self._placement_res = placement_res
         self._routing_res = routing_res
         self._full_module = module
         self._full_placement_res = placement_res
         self._full_routing_res = routing_res
 
-        self.canvas.load_schematic(placement_res, routing_res)
         self._populate_hierarchy_tree(module)
         self.setWindowTitle(f"OpenVision - [{module.name}] ({len(module.instances):,} gates)")
+
+        if start_expanded:
+            self.expand_hierarchy()
+        else:
+            self.show_module_box()
+
+    def show_module_box(self) -> None:
+        """Displays the design as an architectural top-level module box with primary IO pins."""
+        if not self._full_module:
+            return
+
+        self._is_hierarchy_expanded = False
+        self.canvas.load_module_box(self._full_module, on_expand=self.expand_hierarchy)
+
+        if hasattr(self, "btn_box_view"):
+            self.btn_box_view.setVisible(False)
+        if hasattr(self, "btn_expand_hierarchy"):
+            self.btn_expand_hierarchy.setVisible(True)
+
         self.status_left.setText(
-            f"Design: {module.name} | "
-            f"Gates: {len(module.instances):,} | "
-            f"Nets: {len(routing_res.net_routes):,} | "
-            f"Columns: {placement_res.num_ranks}"
+            f"Design: {self._full_module.name} | "
+            f"Gates: {len(self._full_module.instances):,} | "
+            f"Ports: {len(self._full_module.ports)} | "
+            f"Top-Level Block View"
         )
+        self.status_mid.setText("Double-click the module box to expand hierarchy")
+        QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
+
+    def expand_hierarchy(self, module=None) -> None:
+        """Expands the module box into the full gate-level placed and routed schematic."""
+        if not self._full_placement_res or not self._full_routing_res or not self._full_module:
+            return
+
+        self._is_hierarchy_expanded = True
+        self.canvas.load_schematic(self._full_placement_res, self._full_routing_res)
+
+        if hasattr(self, "btn_box_view"):
+            self.btn_box_view.setVisible(True)
+        if hasattr(self, "btn_expand_hierarchy"):
+            self.btn_expand_hierarchy.setVisible(False)
+
+        self.status_left.setText(
+            f"Design: {self._full_module.name} | "
+            f"Gates: {len(self._full_module.instances):,} | "
+            f"Nets: {len(self._full_routing_res.net_routes):,} | "
+            f"Columns: {self._full_placement_res.num_ranks}"
+        )
+        self.status_mid.setText("Expanded internal gate-level schematic (press Esc or click 'Module Box' to collapse)")
         QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
 
     def showEvent(self, event: QtGui.QShowEvent):
@@ -375,6 +408,21 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self.btn_full_design.setVisible(False)
         tb.addWidget(self.btn_full_design)
 
+        # Hierarchy View Navigation
+        tb.addSeparator()
+        self.btn_expand_hierarchy = QtWidgets.QPushButton("Expand Hierarchy")
+        self.btn_expand_hierarchy.setStyleSheet("background-color: #0284c7; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;")
+        self.btn_expand_hierarchy.setToolTip("Expand the module box into internal gate-level schematic (or double-click the box)")
+        self.btn_expand_hierarchy.clicked.connect(self.expand_hierarchy)
+        tb.addWidget(self.btn_expand_hierarchy)
+
+        self.btn_box_view = QtWidgets.QPushButton("Module Box")
+        self.btn_box_view.setStyleSheet("background-color: #334155; color: white; padding: 3px 8px; border-radius: 3px;")
+        self.btn_box_view.setToolTip("Return to the top-level module block view (or press Esc)")
+        self.btn_box_view.clicked.connect(self.show_module_box)
+        self.btn_box_view.setVisible(False)
+        tb.addWidget(self.btn_box_view)
+
         tb.addSeparator()
         tb.addAction(self.act_export_png)
 
@@ -397,6 +445,7 @@ class SchematicWindow(QtWidgets.QMainWindow):
         self.tree_widget = QtWidgets.QTreeWidget()
         self.tree_widget.setHeaderLabels(["Element", "Type / Bits"])
         self.tree_widget.itemClicked.connect(self._on_tree_item_clicked)
+        self.tree_widget.itemDoubleClicked.connect(self._on_tree_item_double_clicked)
         layout.addWidget(self.tree_widget)
 
         self.dock_tree.setWidget(container)
@@ -536,9 +585,30 @@ class SchematicWindow(QtWidgets.QMainWindow):
             self.status_mid.setText("Restored full design view")
             QtCore.QTimer.singleShot(100, self.canvas.fit_in_view)
 
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            if getattr(self, "_is_hierarchy_expanded", False):
+                self.show_module_box()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def _on_tree_item_double_clicked(self, item: QtWidgets.QTreeWidgetItem, column: int) -> None:
+        if item == self.tree_widget.topLevelItem(0):
+            if self._is_hierarchy_expanded:
+                self.show_module_box()
+            else:
+                self.expand_hierarchy()
+
     def _on_tree_item_clicked(self, item: QtWidgets.QTreeWidgetItem, column: int):
         name = item.text(0)
         if name and not name.startswith("..."):
+            if item == self.tree_widget.topLevelItem(0):
+                if not self._is_hierarchy_expanded:
+                    self.show_module_box()
+                return
+            if not self._is_hierarchy_expanded:
+                self.expand_hierarchy()
             found = self.canvas.find_and_center_node(name)
             if not found:
                 self.canvas.find_and_center_net(name)
@@ -547,6 +617,9 @@ class SchematicWindow(QtWidgets.QMainWindow):
         query = self.edit_search.text().strip()
         if not query:
             return
+
+        if not self._is_hierarchy_expanded:
+            self.expand_hierarchy()
 
         search_type = self.combo_search_type.currentText()
         if search_type == "Gate / Port":

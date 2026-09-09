@@ -142,3 +142,41 @@ def test_main_window_lifecycle(qapp, small_design, tmp_path):
     win.canvas.load_schematic(placement, routing)
     win.canvas.fit_in_view()
     assert not win.canvas._scene.sceneRect().isEmpty()
+
+
+def test_module_box_rendering_and_expansion(qapp, small_design):
+    """Verifies that the module box displays by default and expands on demand."""
+    placement, routing = small_design
+
+    verilog = """
+    module simple_demo (clk, rst, in1, in2, out1, out2);
+        input clk, rst, in1, in2;
+        output out1, out2;
+        wire n1, n2;
+        sky130_fd_sc_hd__nand2_1 g1 (.A(in1), .B(in2), .Y(n1));
+        sky130_fd_sc_hd__dfxtp_1 ff1 (.CLK(clk), .D(n1), .Q(out1));
+        sky130_fd_sc_hd__clkinv_1 inv1 (.A(n1), .Y(out2));
+    endmodule
+    """
+    mod = parse_netlist_text(verilog).top_module
+
+    win = SchematicWindow()
+    win.display_design(mod, placement, routing, start_expanded=False)
+
+    # Initial state must be the top module box view
+    assert not win._is_hierarchy_expanded
+    assert win.canvas.is_box_view
+    assert win.canvas._module_box_item is not None
+    assert len(win.canvas._gate_items) == 0
+
+    # Expand hierarchy to show gates
+    win.expand_hierarchy()
+    assert win._is_hierarchy_expanded
+    assert not win.canvas.is_box_view
+    assert len(win.canvas._gate_items) == len(placement.graph.nodes)
+
+    # Collapse back to box view
+    win.show_module_box()
+    assert not win._is_hierarchy_expanded
+    assert win.canvas.is_box_view
+    assert win.canvas._module_box_item is not None

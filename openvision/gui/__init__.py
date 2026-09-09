@@ -11,6 +11,7 @@ from openvision.gui.wire_items import (
     HFNStubGraphicsItem,
     WirePalette,
 )
+from openvision.gui.module_box_item import ModuleBoxGraphicsItem, ModuleBoxPalette
 from openvision.gui.canvas import SchematicCanvas
 from openvision.gui.main_window import SchematicWindow
 from openvision.gui.exporter import export_scene_to_image
@@ -22,6 +23,8 @@ __all__ = [
     "SolderDotGraphicsItem",
     "HFNStubGraphicsItem",
     "WirePalette",
+    "ModuleBoxGraphicsItem",
+    "ModuleBoxPalette",
     "SchematicCanvas",
     "SchematicWindow",
     "export_scene_to_image",

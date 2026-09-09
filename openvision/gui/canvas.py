@@ -29,9 +29,10 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
     """
 
     # Signals
-    net_selected = pyqtSignal(str)     # Emits net name when selected
-    gate_selected = pyqtSignal(str)    # Emits node/instance name when selected
-    cursor_moved = pyqtSignal(float, float)  # Emits (canvas_x, canvas_y)
+    net_selected = pyqtSignal(str)          # Emits net name when selected
+    gate_selected = pyqtSignal(str)         # Emits node/instance name when selected
+    module_expanded = pyqtSignal(object)    # Emits NetlistModule when double clicked
+    cursor_moved = pyqtSignal(float, float) # Emits (canvas_x, canvas_y)
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None):
         super().__init__(parent)
@@ -66,10 +67,43 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
         self._net_wire_items: Dict[str, List[WireGraphicsItem]] = {}
         self._net_dot_items: Dict[str, List[SolderDotGraphicsItem]] = {}
         self._net_stub_items: Dict[str, List[HFNStubGraphicsItem]] = {}
+        self._module_box_item: Optional[QtWidgets.QGraphicsItem] = None
+        self._is_box_view: bool = False
 
         self._current_highlighted_net: Optional[str] = None
         self._placement_res: Optional[PlacementResult] = None
         self._routing_res: Optional[RoutingResult] = None
+
+    @property
+    def is_box_view(self) -> bool:
+        return self._is_box_view
+
+    def load_module_box(
+        self,
+        module,
+        on_expand=None,
+    ) -> None:
+        """
+        Clears and displays the top-level hierarchical module box.
+        Double-clicking the box expands the gate-level hierarchy.
+        """
+        self._scene.clear()
+        self._gate_items.clear()
+        self._net_wire_items.clear()
+        self._net_dot_items.clear()
+        self._net_stub_items.clear()
+        self._current_highlighted_net = None
+        self._is_box_view = True
+
+        from openvision.gui.module_box_item import ModuleBoxGraphicsItem
+
+        cb = on_expand or (lambda mod: self.module_expanded.emit(mod))
+        self._module_box_item = ModuleBoxGraphicsItem(module, on_double_click=cb)
+        self._scene.addItem(self._module_box_item)
+
+        br = self._module_box_item.boundingRect().adjusted(-80, -80, 80, 80)
+        self._scene.setSceneRect(br)
+        self.fit_in_view()
 
     def load_schematic(
         self,
@@ -85,6 +119,8 @@ class SchematicCanvas(QtWidgets.QGraphicsView):
         self._net_dot_items.clear()
         self._net_stub_items.clear()
         self._current_highlighted_net = None
+        self._module_box_item = None
+        self._is_box_view = False
 
         self._placement_res = placement
         self._routing_res = routing
